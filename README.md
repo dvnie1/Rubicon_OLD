@@ -68,6 +68,17 @@ cd -
 Both `data/` and `experiments/` directories use `uv` for dependency management (installed system-wide via pacman).
 Dependencies will be installed automatically by `uv run` based on the respective `pyproject.toml` files.
 
+Note on Arch Linux (`protobuf` Import Error):
+If you encounter an `ImportError: cannot import name 'runtime_version' from 'google.protobuf'` when running the experiments, your system's `protoc` generated bindings that are too new for the pinned `protobuf` version in `experiments/pyproject.toml`.
+Fix this by unpinning the version:
+
+```bash
+cd experiments
+uv remove protobuf
+uv add protobuf
+cd ..
+```
+
 **Required Python version:** ≥ 3.12, < 3.13
 
 ### Hardware (for Paper Reproduction)
@@ -172,11 +183,9 @@ The system consists of three components that must be started **in this order**:
 ./build/bin/computeUnit \
     -ip 127.0.0.1 \
     -port 23232 \
-    -path data/binary/sf100 \
+    -path data/binary/sf10 \
     -basedata bin \
-    -worker 48 \
-    -node 0 \
-    -cxl_node 1
+    -worker 4
 ```
 
 | Flag | Description |
@@ -208,8 +217,8 @@ cd experiments
 uv run grouping_overhead_experiment.py \
     -ip 127.0.0.1 \
     -port 23232 \
-    --scale-factor 100 \
-    --workers-per-cu 48 \
+    --scale-factor 10 \
+    --workers-per-cu 4 \
     --n-values "10,25,50,100,150,200,300,400,500,650,800,1000" \
     --iterations 10
 ```
@@ -224,8 +233,8 @@ uv run concurrent_query_execution_experiment.py \
     -ip 127.0.0.1 \
     -port 23232 \
     -q "q_1_1,q_2_1,q_3_1,q_4_2" \
-    --scale-factor 100 \
-    --workers-per-cu 48 \
+    --scale-factor 10 \
+    --workers-per-cu 4 \
     --n-values "5,10,15,20,25,30,40,50,60,80,100" \
     --window-size 100 \
     --iterations 10 \
