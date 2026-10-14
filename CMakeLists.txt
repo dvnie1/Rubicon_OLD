@@ -1,10 +1,34 @@
 cmake_minimum_required(VERSION 3.20)
 project(DisaggSIMDProcessor LANGUAGES CXX)
 
+include(FetchContent)
+
+FetchContent_Declare(
+        httplib
+        GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+        GIT_TAG        v0.27.0
+)
+FetchContent_MakeAvailable(httplib)
+
+FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG        v3.12.0
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+FetchContent_Declare(
+        snappy
+        GIT_REPOSITORY https://github.com/google/snappy.git
+        GIT_TAG 1.2.2
+)
+FetchContent_MakeAvailable(snappy)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED On)
-set(warnings "-Wall -Wextra -pedantic -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op -Wmissing-include-dirs -Wnoexcept -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-promo -Wstrict-null-sentinel -Wstrict-overflow=5 -Wundef -Wno-unused -Wno-variadic-macros -Wno-parentheses -fdiagnostics-show-option")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${warnings}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
+#set(warnings "-Wall -Wextra -pedantic -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op -Wmissing-include-dirs -Wnoexcept -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-promo -Wstrict-null-sentinel -Wstrict-overflow=5 -Wundef -Wno-unused -Wno-variadic-macros -Wno-parentheses -fdiagnostics-show-option")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${warnings}")
 set(OPTIMIZE_OPTIONS -O3 -g)
 set(CMAKE_VERBOSE_MAKEFILE On)
 
@@ -78,9 +102,11 @@ set(GR_INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/grouper/include)
 file(GLOB_RECURSE GR_SOURCES ${GR_SRC_DIR}/*.cpp)
 file(GLOB_RECURSE GR_HEADERS ${GR_INC_DIR}/*.hpp)
 
-add_executable(grouper grouper/Grouper.cpp ${GR_SOURCES} ${GR_HEADERS})
+add_executable(grouper grouper/Grouper.cpp ${GR_SOURCES} ${GR_HEADERS}
+        grouper/include/MetricsClient.hpp
+        grouper/include/QueryVectorizer.hpp)
 target_include_directories(grouper PRIVATE ${GR_INC_DIR} ${EXT_DIR})
-target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib)
+target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib httplib nlohmann_json snappy)
 option(GROUPER_VERBOSE "Enable verbose output for grouper" OFF)
 if(GROUPER_VERBOSE)
     target_compile_definitions(grouper PRIVATE VERBOSE_OUTPUT)
