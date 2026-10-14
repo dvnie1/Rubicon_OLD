@@ -24,6 +24,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(snappy)
 
+FetchContent_Declare(
+        xgboost
+        GIT_REPOSITORY https://github.com/dmlc/xgboost.git
+        GIT_TAG        v3.4.1
+        GIT_SUBMODULES_RECURSE TRUE
+)
+FetchContent_MakeAvailable(xgboost)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
@@ -106,7 +114,7 @@ add_executable(grouper grouper/Grouper.cpp ${GR_SOURCES} ${GR_HEADERS}
         grouper/include/MetricsClient.hpp
         grouper/include/QueryVectorizer.hpp)
 target_include_directories(grouper PRIVATE ${GR_INC_DIR} ${EXT_DIR})
-target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib httplib nlohmann_json snappy)
+target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib httplib nlohmann_json snappy xgboost)
 option(GROUPER_VERBOSE "Enable verbose output for grouper" OFF)
 if(GROUPER_VERBOSE)
     target_compile_definitions(grouper PRIVATE VERBOSE_OUTPUT)
