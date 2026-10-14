@@ -36,17 +36,16 @@ Linux (tested on Ubuntu). NUMA support is required.
 ### System Packages
 
 ```bash
-sudo apt update
-sudo apt install -y \
-    build-essential \
-    cmake \
-    git \
-    libnuma-dev \
-    libprotobuf-dev \
-    protobuf-compiler \
-    python3 \
-    python3-pip \
-    graphviz-dev
+sudo pacman -Syu --noconfirm --needed \
+  base-devel \
+  cmake \
+  git \
+  numactl \
+  protobuf \
+  python \
+  python-pip \
+  graphviz \
+  uv
 ```
 
 **Minimum versions:** CMake ≥ 3.20, C++20-capable compiler (GCC ≥ 11 or Clang ≥ 14), protobuf (compatible with `protobuf==4.21.12` for Python bindings).
@@ -56,27 +55,18 @@ sudo apt install -y \
 The `ext/SIMDOperators` submodule includes the [TSL (Template SIMD Library)](https://github.com/db-tu-dresden/TSL) generator as a nested submodule (`tools/tslgen`). The CMake build invokes this generator, which requires Python 3 and several packages. Install the TSL generator's dependencies:
 
 ```bash
-pip install -r ext/SIMDOperators/tools/tslgen/requirements.txt
+cd ext/SIMDOperators/tools/tslgen
+uv venv
+uv pip install -r requirements.txt
+cd -
 ```
 
 > **Note:** If you cannot install `graphviz-dev` (needed for `pygraphviz`), remove `pygraphviz` from that `requirements.txt` and pass `--no-draw-test-dependencies` to the generator if invoked manually.
 
 ### Python (for Data Generation)
 
-The `data/` directory uses [uv](https://docs.astral.sh/uv/) for dependency management. Install `uv`:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Dependencies (installed automatically by `uv run`): `numpy`, `pandas`, `progressbar2` (see `data/pyproject.toml`).
-
-**Required Python version:** ≥ 3.12, < 3.13
-
-### Python (for Experiments)
-
-The `experiments/` directory also uses `uv`. Dependencies (see `experiments/pyproject.toml`):
-`humanize`, `matplotlib`, `netifaces`, `pandas`, `protobuf==4.21.12`, `pyyaml`.
+Both `data/` and `experiments/` directories use `uv` for dependency management (installed system-wide via pacman).
+Dependencies will be installed automatically by `uv run` based on the respective `pyproject.toml` files.
 
 **Required Python version:** ≥ 3.12, < 3.13
 
@@ -124,6 +114,7 @@ Edit `setup.sh` to set the desired scale factors. By default it generates SF 100
 Then run:
 
 ```bash
+export CC="cc -std=gnu89 -Wno-error=incompatible-pointer-types"
 bash setup.sh
 cd ..
 ```
@@ -133,7 +124,11 @@ This clones the [ssb-kit](https://github.com/gregrahn/ssb-kit) generator, builds
 ### 3. Build the C++ Components
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+source ext/SIMDOperators/tools/tslgen/.venv/bin/activate
+cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPython3_EXECUTABLE=$(which python) \
+    -DCMAKE_EXE_LINKER_FLAGS="-Wl,--copy-dt-needed-entries"
 cmake --build build -j$(nproc)
 ```
 

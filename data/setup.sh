@@ -3,7 +3,7 @@
 # Configuration
 REPO_URL="https://github.com/gregrahn/ssb-kit.git"
 REPO_DIR="ssb_generator"
-SCALE_FACTORS=(100)
+SCALE_FACTORS=(10)
 PYTHON_CONVERTER="./convert_to_binary.py"
 CSV_DIR="csv"
 BIN_DIR="binary"
