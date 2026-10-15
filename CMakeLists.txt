@@ -32,6 +32,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(xgboost)
 
+FetchContent_Declare(
+        eigen
+        GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+        GIT_TAG        3.4.0
+)
+FetchContent_MakeAvailable(eigen)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
@@ -114,7 +121,7 @@ add_executable(grouper grouper/Grouper.cpp ${GR_SOURCES} ${GR_HEADERS}
         grouper/include/MetricsClient.hpp
         grouper/include/QueryVectorizer.hpp)
 target_include_directories(grouper PRIVATE ${GR_INC_DIR} ${EXT_DIR})
-target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib httplib nlohmann_json snappy xgboost)
+target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib httplib nlohmann_json snappy xgboost eigen)
 option(GROUPER_VERBOSE "Enable verbose output for grouper" OFF)
 if(GROUPER_VERBOSE)
     target_compile_definitions(grouper PRIVATE VERBOSE_OUTPUT)

@@ -19,9 +19,11 @@
 #include "Analysis.hpp"
 #include "TransferAnalysis.hpp"
 
+#include "AdaptiveLoadBalancer.hpp"
+
 class DagCollection {
    public:
-    DagCollection(tuddbs::TCPServer& server, uint64_t threshold, float maxOverhead);
+    DagCollection(tuddbs::TCPServer& server, lb::AdaptiveLoadBalancer& loadBalancer, uint64_t threshold, float maxOverhead);
     ~DagCollection();
 
     DagCollection(const DagCollection&) = delete;
@@ -57,6 +59,8 @@ class DagCollection {
     analysis::SupersetAbsorptionConfig groupingConfig_{.maxMergeOverhead = 2.0f};
     transfer_analysis::CXLSystemConfig hwConfig_;  // hardware cost model
     std::thread worker_thread_;
+
+    lb::AdaptiveLoadBalancer& load_balancer_;
 };
 
 #endif  // DAG_COLLECTION_HPP

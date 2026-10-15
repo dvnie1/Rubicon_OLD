@@ -1,82 +1,64 @@
 #include "ThompsonSampler.hpp"
-#include <algorithm>
+#include <limits>
 
 namespace lb {
 
-ThompsonSampler::ThompsonSampler() {
-    std::random_device rd;
-    rng_.seed(rd());
-}
+    ThompsonSampler::ThompsonSampler(size_t n_features, double v)
+        : n_features_(n_features), v_(v), norm_dist_(0.0, 1.0) {
+        std::random_device rd;
+        rng_.seed(rd());
 
-double ThompsonSampler::sampleBeta(double alpha, double beta_param) {
-    std::gamma_distribution<double> x_dist(alpha, 1.0);
-    std::gamma_distribution<double> y_dist(beta_param, 1.0);
-    
-    double x = x_dist(rng_);
-    double y = y_dist(rng_);
-    
-    if (x + y == 0.0) return 0.5;
-    return x / (x + y);
-}
+        B_ = Eigen::MatrixXd::Identity(n_features_, n_features_);
+        f_ = Eigen::VectorXd::Zero(n_features_);
+        mu_ = Eigen::VectorXd::Zero(n_features_);
+        B_inv_ = Eigen::MatrixXd::Identity(n_features_, n_features_);
+    }
 
-uint64_t ThompsonSampler::selectTarget(const std::vector<uint64_t>& available_cus,
-                                       const ExecutionMetrics& prediction,
-                                       const std::unordered_map<uint64_t, CUState>& cu_states) {
-    if (available_cus.empty()) return 0;
+    uint64_t ThompsonSampler::selectTarget(const std::vector<uint64_t>& available_cus,
+                                           const std::unordered_map<uint64_t, std::vector<float>>& cu_features) {
+        if (available_cus.empty()) return 0;
 
-    std::shared_lock lock(mutex_);
+        std::shared_lock lock(mutex_);
 
-    uint64_t best_cu = available_cus[0];
-    double best_score = -1.0;
+        Eigen::MatrixXd cov = (v_ * v_) * B_inv_;
+        Eigen::LLT<Eigen::MatrixXd> llt(cov);
+        Eigen::MatrixXd L = llt.matrixL();
 
-    for (uint64_t cu_uuid : available_cus) {
-        auto state_it = cu_states.find(cu_uuid);
-        if (state_it != cu_states.end()) {
-            if (state_it->second.ram_available_bytes < prediction.ram_peak_bytes * 1.1) {
-                continue;
+        Eigen::VectorXd z(n_features_);
+        for (size_t i = 0; i < n_features_; ++i) {
+            z(i) = norm_dist_(rng_);
+        }
+
+        Eigen::VectorXd theta_sample = mu_ + L * z;
+
+        double best_score = -std::numeric_limits<double>::infinity();
+        uint64_t best_cu = available_cus[0];
+
+        for (uint64_t cu_uuid : available_cus) {
+            auto it = cu_features.find(cu_uuid);
+            if (it == cu_features.end()) continue;
+
+            Eigen::VectorXd feat = Eigen::Map<const Eigen::VectorXf>(it->second.data(), it->second.size()).cast<double>();
+            double score = feat.dot(theta_sample);
+
+            if (score > best_score) {
+                best_score = score;
+                best_cu = cu_uuid;
             }
         }
 
-        double alpha = 1.0;
-        double beta_param = 1.0;
-        auto bandit_it = bandits_.find(cu_uuid);
-        
-        if (bandit_it != bandits_.end()) {
-            alpha = bandit_it->second.alpha;
-            beta_param = bandit_it->second.beta_param;
-        }
-
-        double theta = sampleBeta(alpha, beta_param);
-        double predicted_lat = std::max(prediction.latency_ms, 1.0);
-        double score = theta / predicted_lat;
-
-        if (score > best_score) {
-            best_score = score;
-            best_cu = cu_uuid;
-        }
+        return best_cu;
     }
 
-    if (best_score == -1.0) {
-        return available_cus[rng_() % available_cus.size()];
+    void ThompsonSampler::updateDistribution(const std::vector<float>& context, double reward) {
+        std::unique_lock lock(mutex_);
+
+        Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXf>(context.data(), context.size()).cast<double>();
+
+        B_ += x * x.transpose();
+        f_ += x * reward;
+        B_inv_ = B_.inverse();
+        mu_ = B_inv_ * f_;
     }
-
-    return best_cu;
-}
-
-void ThompsonSampler::updateDistribution(uint64_t cu_uuid, bool success, double actual_latency_ms, double predicted_latency_ms) {
-    std::unique_lock lock(mutex_);
-
-    BanditState& bandit = bandits_[cu_uuid];
-
-    if (!success) {
-        bandit.beta_param += 1.0;
-    } else {
-        double ratio = predicted_latency_ms / std::max(actual_latency_ms, 1.0);
-        double reward = std::clamp(ratio, 0.0, 1.0);
-
-        bandit.alpha += reward;
-        bandit.beta_param += (1.0 - reward);
-    }
-}
 
 }

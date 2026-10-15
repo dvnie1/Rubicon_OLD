@@ -16,6 +16,8 @@
 #include "WorkRequest.pb.h"
 #include "WorkResponse.pb.h"
 
+#include "AdaptiveLoadBalancer.hpp"
+
 using namespace tuddbs;
 
 void globalExit(TCPServer& server) {
@@ -30,10 +32,13 @@ int main(int argc, char* argv[]) {
     const bool verbose = parser.takeParseArg<bool>("-v", "", false, false);
 
     TCPServer server(atol(port_string.c_str()));
+    lb::AdaptiveLoadBalancer loadBalancer("http://127.0.0.1:8428");
 
     std::shared_mutex collectionMutex;
 
-    std::unique_ptr<DagCollectionManager> collectionManager = std::make_unique<DagCollectionManager>(server, 10, std::chrono::milliseconds(100));
+    std::unique_ptr<DagCollectionManager> collectionManager = std::make_unique<DagCollectionManager>(
+    server, loadBalancer, 10, std::chrono::milliseconds(100)
+);
 
     auto forward_cb = [&server, &verbose](TCPMetaInfo* meta, void* data, size_t len) -> void {
         VLOG("[Forward_Cb] Invoking");
@@ -181,7 +186,7 @@ int main(int argc, char* argv[]) {
         collectionManager->add_dag(std::move(dag));
     };
 
-    auto server_configuration_cb = [&server, &collectionManager, &forward_cb, &query_plan_cb, &collectionMutex](TCPMetaInfo* meta, void* data, size_t len) -> void {
+    auto server_configuration_cb = [&server, &collectionManager, &forward_cb, &query_plan_cb, &collectionMutex, &loadBalancer](TCPMetaInfo* meta, void* data, size_t len) -> void {
         VLOG("[Server_Configuration_Cb] I received a ServerConfiguration message.");
 
         ddd::network::ServerConfigurationRequest request;
@@ -210,7 +215,7 @@ int main(int argc, char* argv[]) {
             const float max_overhead = request.has_maxoverhead() ? request.maxoverhead() : 2.0f;
 
             std::unique_lock lock(collectionMutex);
-            collectionManager = std::make_unique<DagCollectionManager>(server, threshold, window_size, max_overhead);
+            collectionManager = std::make_unique<DagCollectionManager>(server, loadBalancer, threshold, window_size, max_overhead);
         }
 
         ddd::network::ServerConfigurationResponse response;
@@ -233,6 +238,14 @@ int main(int argc, char* argv[]) {
         free(out_mem);
     };
 
+    auto plan_response_cb = [&loadBalancer, &forward_cb](TCPMetaInfo* meta, void* data, size_t len) -> void {
+        PlanResponse response;
+        if (response.ParseFromArray(data, len)) {
+            loadBalancer.onPlanCompleted(response.planid(), response.success());
+        }
+        forward_cb(meta, data, len);
+    };
+
     server.addCallback(TcpPackageType::TEXT, text_cb);
     server.addCallback(TcpPackageType::WORK, forward_cb);
     server.addCallback(TcpPackageType::QUERY_PLAN, forward_cb);
@@ -243,7 +256,7 @@ int main(int argc, char* argv[]) {
     server.addCallback(TcpPackageType::CONNECT_ACTION_INFO, forward_cb);
     server.addCallback(TcpPackageType::UUID_FOR_UNIT_REQUEST, uuid_per_client_cb);
     server.addCallback(TcpPackageType::CONFIGURATION_ACTION, forward_cb);
-    server.addCallback(TcpPackageType::PLAN_RESPONSE, forward_cb);
+    server.addCallback(TcpPackageType::PLAN_RESPONSE, plan_response_cb);
     server.addCallback(TcpPackageType::SERVER_CONFIGURATION, server_configuration_cb);
 
     std::string content;

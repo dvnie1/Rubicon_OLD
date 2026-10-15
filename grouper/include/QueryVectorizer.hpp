@@ -7,7 +7,7 @@ namespace lb {
 
     class QueryVectorizer {
     public:
-        static std::vector<float> vectorizeGroup(const std::vector<plan::PlanDAG>& dags);
+        static std::vector<float> vectorizeGroup(const std::vector<const plan::PlanDAG*>& dags);
     };
 
 }

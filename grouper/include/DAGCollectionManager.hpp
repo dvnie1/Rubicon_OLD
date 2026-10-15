@@ -14,13 +14,15 @@
 #include <atomic>
 #include <functional>
 
+#include "AdaptiveLoadBalancer.hpp"
+
 class DagCollectionManager {
 public:
     using Duration = std::chrono::steady_clock::duration;
     using CollectionFactory = std::function<std::unique_ptr<DagCollection>()>;
 
     // Constructor with configurable window duration (default: 1 second)
-    explicit DagCollectionManager(tuddbs::TCPServer& server, uint64_t threshold = 10, Duration window_duration = std::chrono::seconds(1), float maxOverhead = 2.0f);
+    explicit DagCollectionManager(tuddbs::TCPServer& server, lb::AdaptiveLoadBalancer& loadBalancer, uint64_t threshold = 10, Duration window_duration = std::chrono::seconds(1), float maxOverhead = 2.0f);
 
     // Constructor with custom collection factory (for derived DagCollection types)
     DagCollectionManager(tuddbs::TCPServer& server, uint64_t threshold, float maxOverhead, Duration window_duration, CollectionFactory factory);

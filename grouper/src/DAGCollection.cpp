@@ -11,11 +11,12 @@
 #include "ColumnSizes.hpp"
 #include "Logger.hpp"
 
-DagCollection::DagCollection(tuddbs::TCPServer& server, uint64_t threshold, float maxOverhead)
+DagCollection::DagCollection(tuddbs::TCPServer& server, lb::AdaptiveLoadBalancer& loadBalancer, uint64_t threshold, float maxOverhead)
     : server_(server),
+      load_balancer_(loadBalancer),
       threshold_(threshold),
       groupingConfig_{.maxMergeOverhead = maxOverhead},
-      hwConfig_{},  // MLC-derived defaults
+      hwConfig_{},
       worker_thread_(&DagCollection::run, this)
 {
 }
@@ -119,10 +120,6 @@ void DagCollection::analyze() {
     };
 #endif
 
-    // =========================================================================
-    // Gather base-column maps and type maps from every DAG
-    // =========================================================================
-
     std::vector<const plan::BasColMap*>     maps;
     std::vector<const plan::BasColTypeMap*> typeMaps;
     maps.reserve(dags_.size());
@@ -139,19 +136,11 @@ void DagCollection::analyze() {
     double tGatherMaps = elapsed();
 #endif
 
-    // =========================================================================
-    // Form groups via superset absorption
-    // =========================================================================
-
     auto groups = analysis::groupBySupersetAbsorption(maps, groupingConfig_);
 
 #ifdef PROFILING_ENABLED
     double tGrouping = elapsed();
 #endif
-
-    // =========================================================================
-    // Check for available CUs / planners
-    // =========================================================================
 
     auto cuUuids = server_.getUuidForUnitType(UnitType::COMPUTE_UNIT);
     if (cuUuids.empty()) {
@@ -169,19 +158,17 @@ void DagCollection::analyze() {
     double tUuidLookup = elapsed();
 #endif
 
-    // =========================================================================
-    // Decide transfers using hardware cost model
-    // =========================================================================
-
     auto transferDecisions = transfer_analysis::decideTransfers(groups, dags_, typeMaps, schema, cuUuids, CHUNK_SIZE, hwConfig_);
 
 #ifdef PROFILING_ENABLED
     double tTransferDecisions = elapsed();
 #endif
 
-    // =========================================================================
-    // Build QueryGroup messages and dispatch
-    // =========================================================================
+    std::vector<uint64_t> available_cus;
+    available_cus.reserve(cuUuids.size());
+    for (const auto& [name, uuid] : cuUuids) {
+        available_cus.push_back(uuid);
+    }
 
     std::unordered_map<std::string, std::string> replacement_map;
     std::unordered_map<std::string, WorkItem> column_transfers;
@@ -191,6 +178,14 @@ void DagCollection::analyze() {
     for (const auto& group : groups) {
         const uint64_t id = UniqueRandomU64::instance().next();
         const std::string idPrefix = std::to_string(id) + "_";
+
+        std::vector<const plan::PlanDAG*> group_dags;
+        group_dags.reserve(group.size());
+        for (size_t dagIdx : group) {
+            group_dags.push_back(&dags_[dagIdx]);
+        }
+
+        uint64_t target_cu = load_balancer_.assignGroup(id, group_dags, available_cus);
 
         QueryGroup query_group;
         query_group.set_groupid(id);
@@ -246,7 +241,6 @@ void DagCollection::analyze() {
             *query_group.add_columntransfers() = std::move(transfer);
         }
 
-        // Dispatch
         WorkRequest request;
         *request.mutable_querygroup() = std::move(query_group);
 
@@ -254,7 +248,7 @@ void DagCollection::analyze() {
         info.package_type = TcpPackageType::QUERY_GROUP;
         info.payload_size = request.ByteSizeLong();
         info.src_uuid     = plannerUuids[0].second;
-        info.tgt_uuid     = cuUuids[groupIdx % cuUuids.size()].second;
+        info.tgt_uuid     = target_cu;
 
         out_buf.resize(info.bytesize());
         tuddbs::Utility::serializeItemToMemory(out_buf.data(), request, info);

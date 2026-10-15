@@ -1,8 +1,8 @@
 #include "DAGCollectionManager.hpp"
 
-DagCollectionManager::DagCollectionManager(tuddbs::TCPServer &server, uint64_t threshold, Duration window_duration, float maxOverhead)
-    : DagCollectionManager(server, threshold, maxOverhead, window_duration, [&server, threshold, maxOverhead] {
-        return std::make_unique<DagCollection>(server, threshold, maxOverhead);
+DagCollectionManager::DagCollectionManager(tuddbs::TCPServer &server, lb::AdaptiveLoadBalancer& loadBalancer, uint64_t threshold, Duration window_duration, float maxOverhead)
+    : DagCollectionManager(server, threshold, maxOverhead, window_duration, [&server, &loadBalancer, threshold, maxOverhead] {
+        return std::make_unique<DagCollection>(server, loadBalancer, threshold, maxOverhead);
     })
 {
 }
