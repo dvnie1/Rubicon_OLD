@@ -1,10 +1,13 @@
-#include <infrastructure/Utility.hpp>
+#include "Utility.hpp"
 
 #include <chrono>
 #include <iostream>
 #include <random>
 #include <string>
 #include <vector>
+
+#include "Logger.hpp"
+#include "../include/TCPServer.hpp"
 
 namespace tuddbs {
 
@@ -68,7 +71,7 @@ WorkItem Utility::generateRandomWorkItem(bool verbose) {
         ColumnMessage* innerCol = join->mutable_innercolumn();
         ColumnMessage* outerCol = join->mutable_outercolumn();
         ColumnMessage* outputCol = join->mutable_outputcolumn();
-        
+
         innerCol->set_tabname(tuddbs::Utility::generateRandomString());
         innerCol->set_colname(tuddbs::Utility::generateRandomString());
         innerCol->set_coltype(static_cast<ColumnType>(tuddbs::Utility::generateRandomNumber(0, 4)));
@@ -84,15 +87,13 @@ WorkItem Utility::generateRandomWorkItem(bool verbose) {
         join->set_joinpredicate(static_cast<CompType>(tuddbs::Utility::generateRandomNumber(0, 5)));
     }
 
-    if (verbose) {
-        std::cout << "=================================" << std::endl;
-        std::cout << "     Created a new WorkItem " << std::endl;
-        std::cout << "=================================" << std::endl;
-        std::cout << "Protobuf WorkItem debug info: " << std::endl
-                  << item.DebugString();
-        std::cout << "ItemSize: " << item.ByteSizeLong() << std::endl;
-        std::cout << "=================================" << std::endl;
-    }
+    VLOG("=================================");
+    VLOG("     Created a new WorkItem ");
+    VLOG("=================================");
+    VLOG("Protobuf WorkItem debug info:\n"
+         << item.DebugString());
+    VLOG("ItemSize: " << item.ByteSizeLong());
+    VLOG("=================================");
 
     return item;
 }
@@ -110,11 +111,11 @@ void Utility::extractItemsModifyBuffer(void* in_memory, ssize_t in_received_byte
 
     data_ptr = static_cast<char*>(in_memory);
     if (data_ptr - data_start_ptr > 0) {
-        std::cout << "[extractItemsModifyBuffer] I expected a delimiter at Byte 0 but did not find it. Data was lost. Exiting." << std::endl;
+        VLOG("[extractItemsModifyBuffer] I expected a delimiter at Byte 0 but did not find it. Data was lost. Exiting.");
         exit(-13);
     }
 
-    // Reinterpret the current data poitner as our meta info struct
+    // Reinterpret the current data pointer as our meta info struct
     TCPMetaInfo info;
     std::memcpy(&info, data_ptr, sizeof(TCPMetaInfo));
 
@@ -122,13 +123,11 @@ void Utility::extractItemsModifyBuffer(void* in_memory, ssize_t in_received_byte
     // We break the loop, if payload size + meta size is larger than the remaining bytes in the stream.
     // We can also break, if no bytes are left, i.e. we found a complete package as last object
 
-    while (static_cast<ssize_t>(info.payload_size + sizeof(TCPMetaInfo)) <= remaining_bytes && remaining_bytes > 0) {
+    while (static_cast<ssize_t>(info.bytesize()) <= remaining_bytes && remaining_bytes > 0) {
         if (verbose) {
             // Debug info
-            std::cout << "From: " << info.src_uuid << std::endl;
-            std::cout << "Bytes left: " << remaining_bytes << " -- Parsing next message. Type: [";
-            std::cout << TcpPackageType_Name(info.package_type);
-            std::cout << "] Size: " << info.payload_size << std::endl;
+            VLOG("From: " << info.src_uuid << "; To: " << info.tgt_uuid);
+            VLOG("Bytes left: " << remaining_bytes << " -- Parsing next message. Type: [" << TcpPackageType_Name(info.package_type) << "] Size: " << info.payload_size);
         }
 
         // Advance the data pointer past the meta info to the actual payload
@@ -142,22 +141,17 @@ void Utility::extractItemsModifyBuffer(void* in_memory, ssize_t in_received_byte
         // Advance the data pointer to the next message delimiter.
         data_ptr += info.payload_size;
 
-        // Update our looping boundaries accordignly. We consumed a meta info struct and its corresponding payload.
-        remaining_bytes -= info.payload_size + sizeof(TCPMetaInfo);
+        // Update our looping boundaries accordingly. We consumed a meta info struct and its corresponding payload.
+        remaining_bytes -= info.bytesize();
 
         // Update the meta info struct pointer
         std::memcpy(&info, data_ptr, sizeof(TCPMetaInfo));
     }
 
-    if (verbose) {
-        std::cout << "Bytes left after parsing complete messages: " << remaining_bytes << std::endl
-                  << std::endl;
-    }
+    VLOG("Bytes left after parsing complete messages: " << remaining_bytes << "\n");
     if (remaining_bytes > 0) {
-        memcpy(out_message_buffer_start, data_ptr, remaining_bytes);
-        if (verbose) {
-            std::cout << "[IncompleteMessage] Moving " << remaining_bytes << " to the start of the buffer." << std::endl;
-        }
+        memmove(out_message_buffer_start, data_ptr, remaining_bytes);
+        VLOG("[IncompleteMessage] Moving " << remaining_bytes << " to the start of the buffer.");
     }
 
     out_unprocessed_bytes = remaining_bytes;

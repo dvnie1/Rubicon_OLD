@@ -6,7 +6,7 @@
 
 #include "TransferAnalysis.hpp"
 #include "UniqueRandomU64.hpp"
-#include "Utility.hpp"
+#include "../../tcp_stuff/include/Utility.hpp"
 #include "WorkRequest.pb.h"
 #include "ColumnSizes.hpp"
 #include "Logger.hpp"

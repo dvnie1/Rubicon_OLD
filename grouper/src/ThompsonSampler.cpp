@@ -1,5 +1,6 @@
 #include "ThompsonSampler.hpp"
 #include <limits>
+#include <mutex>
 
 namespace lb {
 

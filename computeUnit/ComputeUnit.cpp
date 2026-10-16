@@ -8,9 +8,9 @@
 #include <numa.h>
 
 #include <infrastructure/ArgParser.hpp>
-#include <infrastructure/TCPClient.hpp>
-#include <infrastructure/Utility.hpp>
-#include <infrastructure/Logger.hpp>
+#include "TCPClient.hpp"
+#include "Utility.hpp"
+#include <Logger.hpp>
 #include <algorithm>
 #include <bitset>
 #include <chrono>
@@ -29,6 +29,8 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+
+#include "infrastructure/MonitorClient.hpp"
 
 class IdleTestOp : public AbstractOperator {
    public:
@@ -68,6 +70,11 @@ int main(int argc, char** argv) {
     const std::string load_binary = parser.takeParseArg<std::string>("-basedata", "[Info] Loading SSB as CSV. Set with [-basedata] to \'bin\' or \'csv\'", "bin", false);
     const ssize_t node = parser.takeParseArg<ssize_t>("-node", "[Info] No NUMA node affinity given. Set with [-node]. -1 means all nodes. Using default: [-1].", -1, false);
     const ssize_t cxl_node = parser.takeParseArg<ssize_t>("-cxl_node", "[Info] No CXL-NUMA node affinity given. Set with [-cxl_node]. -1 means any node is used for data. Using default: [-1].", -1, false);
+
+    const std::string& monitor_ip = parser.takeParseArg<std::string>("-monitor_ip", "[Info] No minotor IP given. Pass a server IP with [-monitor_ip], unit is starting without monitoring!", "", false);
+    const size_t monitor_port = parser.takeParseArg<size_t>("-monitor_port", "[Info] No monitor Port given. Pass a port with [-monitor_port], unit is starting without monitoring!", 0, false);
+    const size_t monitor_interval = parser.takeParseArg<size_t>("-monitor_interval", "[Info] No monitor interval given. Standard interval of 100 millisecond will be used.", 100, false);
+    const size_t monitor_acc = parser.takeParseArg<size_t>("-monitor_acc", "[Info] No accumulation count - Slim Mode disabled. Client will send each batch explicitly.", 1, false);
 
     if (pathToData.size() > 0) {
         LOG_DEBUG1("[ComputeUnit] Ingesting SSB data from path: " << pathToData << " to NUMA node " << cxl_node << std::endl;)
@@ -370,6 +377,14 @@ int main(int argc, char** argv) {
     client.addCallback(TcpPackageType::CONFIGURATION_ACTION, configAction_cb);
 
     client.start();
+
+    std::optional<MonitorClient> monitor_client;
+
+    if (!(monitor_ip=="" || monitor_port==0)) {
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        monitor_client.emplace(monitor_ip, monitor_port, client.getUuid(), UnitType::COMPUTE_UNIT, monitor_interval, monitor_acc);
+        std::cout << "Monitor connected at: " << monitor_ip << ":" << monitor_port << std::endl;
+    }
 
     // necessary for initializing if not already done
     DataCatalog::getInstance();

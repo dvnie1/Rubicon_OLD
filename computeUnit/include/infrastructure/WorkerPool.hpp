@@ -3,7 +3,7 @@
 #include <WorkRequest.pb.h>
 #include <WorkResponse.pb.h>
 
-#include <infrastructure/TCPClient.hpp>
+#include <../../../tcp_stuff/include/TCPClient.hpp>
 #include <atomic>
 #include <condition_variable>
 #include <deque>

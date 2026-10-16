@@ -27,6 +27,13 @@ namespace tuddbs {
  *
  * @param port
  */
+
+thread_local int t_current_socket_fd = -1;
+int TCPServer::getCurrentThreadSocket() {
+    return t_current_socket_fd;
+}
+
+
 TCPServer::TCPServer(int port) : _port(port) {
     auto clientInfoReceiveCallback = [this](ClientInfo* client) -> void {
         auto waitReadable = [&](int fd, int timeout_ms) -> bool {
@@ -64,6 +71,7 @@ TCPServer::TCPServer(int port) : _port(port) {
         const int POLL_TIMEOUT_MS = 200;
 
         while (!client->abort.load()) {
+            t_current_socket_fd = client->handle;
             const size_t available_space = MAX_DATA_SIZE - client->unprocessed_bytes;
             if (available_space == 0) {
                 std::cerr << "[ClientInfoCallback] Buffer overflow risk detected (" << client->unprocessed_bytes << " unprocessed bytes)!\n";
@@ -160,7 +168,7 @@ TCPServer::TCPServer(int port) : _port(port) {
                 std::memcpy(&update_info, buf, sizeof(TCPMetaInfo));
 
                 if (static_cast<size_t>(received_bytes) < update_info.bytesize()) {
-                    VLOG("[UpdateUnitType] Error. Please implement continuous receive for segmented unit info packages.");
+                    //VLOG("[UpdateUnitType] Error. Please implement continuous receive for segmented unit info packages.");
                     exit(-1);
                 }
                 // Only accept the UpdateUnitType response at this time. Drop any client which does not obey the protocol.

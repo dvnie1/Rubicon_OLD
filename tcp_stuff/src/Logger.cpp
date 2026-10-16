@@ -1,4 +1,4 @@
-#include <infrastructure/Logger.hpp>
+#include <Logger.hpp>
 
 #include <iostream>
 #include <thread>

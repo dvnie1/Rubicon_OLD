@@ -1,6 +1,6 @@
 #include <numa.h>
 
-#include <infrastructure/Logger.hpp>
+#include <Logger.hpp>
 #include <infrastructure/WorkerPool.hpp>
 #include <sstream>
 

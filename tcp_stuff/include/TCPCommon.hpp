@@ -27,6 +27,8 @@ struct TCPMetaInfo {
     uint64_t src_uuid = 0;
     uint64_t tgt_uuid = 0;
 
+    uint64_t host_unit_uuid = 0;
+
     size_t bytesize() const { return sizeof(TCPMetaInfo) + payload_size; }
 };
 #pragma pack(pop)

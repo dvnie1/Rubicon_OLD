@@ -1,4 +1,4 @@
-#include <infrastructure/TCPClient.hpp>
+#include "TCPClient.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -14,7 +14,7 @@
 #include <functional>
 #include <iostream>
 
-#include <infrastructure/Utility.hpp>
+#include "Utility.hpp"
 
 namespace tuddbs {
 

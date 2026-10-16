@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package metrics;
+
+message KernelInfo {
+    int32 major = 1;
+    int32 minor = 2;
+    int32 patch = 3;
+    int32 build_number = 4;
+    string full_release_string = 5;
+}
+
+message CpuInfoDetailed {
+    message Processor {
+        map<string, string> fields = 1;
+    }
+    repeated Processor processors = 1;
+}
+
+message CpuInfo {
+    map<string, string> fields = 1;
+}
+
+message MemInfoDetailed {
+    map<string, int64> values = 1;
+}
+
+message MemInfo {
+    repeated string lines = 1;
+}
+
+message NumaInfo {
+    repeated string lines = 1;
+}
+
+message PciInfo {
+    repeated string lines = 1;
+}
+
+message HostUnitType {
+    string type = 1;
+}
+
+message HostMachineUuid {
+    string uuid = 1;
+}
+
+message DynamicMetric {
+    string name = 1;
+    map<string, string> labels = 2;
+    double value = 3;
+    int64 timestamp_ms = 4;
+}
+
+message DynamicMetricBatch {
+    repeated DynamicMetric metrics = 1;
+}
+
+enum LogLevel {
+    ERROR = 0;
+    FATAL = 1;
+    NOFORMAT = 2;
+    CONSOLE = 3;
+    WARNING = 4;
+    INFO = 5;
+    SUCCESS = 6;
+    DEBUG1 = 7;
+    DEBUG2 = 8;
+}
+
+message LogEntry {
+    int64 timestamp = 1;
+    LogLevel level = 2;
+    string message = 3;
+    string host_unit_uuid = 4;
+    string file_source = 5; // __FILE__
+    int32 line_number = 6;  // __LINE__
+}
+
+message LogBatch {
+    repeated LogEntry entries = 1;
+    string host_unit_uuid = 2; // redundant, but could be useful for routing
+}

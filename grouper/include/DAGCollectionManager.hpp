@@ -2,7 +2,7 @@
 #define DAG_COLLECTION_MANAGER_HPP
 
 #include "DAGCollection.hpp"
-#include "TCPServer.hpp"
+#include "../../tcp_stuff/include/TCPServer.hpp"
 
 #include <memory>
 #include <vector>

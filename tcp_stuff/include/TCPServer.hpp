@@ -48,6 +48,7 @@ class TCPServer {
     int _port;
     std::thread t;
     ConnectCallback connectCallback;
+    std::function<void(int)> disconnectCallback = nullptr;
 
    public:
     TCPServer(int port);
@@ -75,6 +76,12 @@ class TCPServer {
     void clear_aborted();
     static void freeHandle(ClientHandle handle);
     std::string monitorInfoToString();
+
+    static int getCurrentThreadSocket();
+
+    void setDisconnectCallback(std::function<void(int)> cb) {
+     this->disconnectCallback = cb;
+    }
 
    private:
     std::atomic<bool> globalAbort{false};

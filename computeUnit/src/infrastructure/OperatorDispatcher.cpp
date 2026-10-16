@@ -1,7 +1,7 @@
 #include <UnitDefinition.pb.h>
 #include <WorkResponse.pb.h>
 
-#include <infrastructure/Utility.hpp>
+#include <Utility.hpp>
 #include <bitset>
 #include <factories/AggregateFactory.hpp>
 #include <factories/DataTransferFactory.hpp>

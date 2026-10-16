@@ -3,7 +3,7 @@
 #include <WorkRequest.pb.h>
 #include <WorkResponse.pb.h>
 
-#include <infrastructure/Logger.hpp>
+#include <Logger.hpp>
 #include <factories/AbstractOperatorFactory.hpp>
 #include <functional>
 #include <infrastructure/SupportedOperators.hpp>

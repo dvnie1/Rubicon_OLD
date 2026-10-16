@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "PlanDAG.hpp"
-#include "TCPServer.hpp"
+#include "../../tcp_stuff/include/TCPServer.hpp"
 #include "Analysis.hpp"
 #include "TransferAnalysis.hpp"
 

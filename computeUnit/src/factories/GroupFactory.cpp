@@ -1,7 +1,7 @@
 #include <factories/GroupFactory.hpp>
 
 #include <operators/GroupOperator.hpp>
-#include <infrastructure/Logger.hpp>
+#include <Logger.hpp>
 
 
 GroupFactory::GroupFactory() : AbstractOperatorFactory() {

@@ -3,7 +3,7 @@
 #include <numa.h>
 #include <stddef.h>
 
-#include <infrastructure/Logger.hpp>
+#include <Logger.hpp>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>

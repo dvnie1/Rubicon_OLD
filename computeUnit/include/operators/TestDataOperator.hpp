@@ -1,6 +1,6 @@
 #pragma once
 
-#include <infrastructure/Utility.hpp>
+#include <Utility.hpp>
 #include <infrastructure/DataCatalog.hpp>
 #include <operators/AbstractOperator.hpp>
 

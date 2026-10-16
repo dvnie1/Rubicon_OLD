@@ -14,7 +14,7 @@
 
 #include "QueryPlan.pb.h"
 #include "WorkItem.pb.h"
-#include "TCPServer.hpp"
+#include "../../tcp_stuff/include/TCPServer.hpp"
 
 namespace plan {
 

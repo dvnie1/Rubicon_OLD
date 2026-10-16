@@ -88,6 +88,13 @@ add_library(proto_lib STATIC ${PROTO_GENERATED_SRCS} ${PROTO_GENERATED_HDRS})
 target_include_directories(proto_lib PUBLIC ${PROTO_GEN_DIR})
 target_link_libraries(proto_lib PUBLIC ${Protobuf_LIBRARIES})
 target_include_directories(proto_lib PUBLIC ${Protobuf_INCLUDE_DIRS})
+
+set(TCP_INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tcp_stuff/include)
+file(GLOB_RECURSE TCP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tcp_stuff/src/*.cpp)
+
+add_library(tcp_lib STATIC ${TCP_SOURCES})
+target_include_directories(tcp_lib PUBLIC ${TCP_INC_DIR})
+target_link_libraries(tcp_lib PUBLIC proto_lib httplib nlohmann_json snappy ${PTHREAD_LIB})
 # ────────────────────────────────────────────────────────────
 
 set(EXT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ext)
@@ -107,7 +114,7 @@ file(GLOB_RECURSE CU_HEADERS ${CU_INC_DIR}/*.hpp)
 
 add_executable(computeUnit computeUnit/ComputeUnit.cpp ${CU_SOURCES} ${CU_HEADERS})
 target_include_directories(computeUnit PRIVATE ${CU_INC_DIR} ${EXT_DIR} ${SIMDOPS_TSL_ROOT} ${SIMDOPS_INCLUDE})
-target_link_libraries(computeUnit ${PTHREAD_LIB} ${NUMA_LIB} "tsl" proto_lib)
+target_link_libraries(computeUnit ${PTHREAD_LIB} ${NUMA_LIB} "tsl" proto_lib tcp_lib)
 target_compile_definitions(computeUnit PRIVATE DEFAULT_LOG_LEVEL="${LOG_LEVEL}")
 
 # ── grouper ─────────────────────────────────────────────────
@@ -121,7 +128,7 @@ add_executable(grouper grouper/Grouper.cpp ${GR_SOURCES} ${GR_HEADERS}
         grouper/include/MetricsClient.hpp
         grouper/include/QueryVectorizer.hpp)
 target_include_directories(grouper PRIVATE ${GR_INC_DIR} ${EXT_DIR})
-target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib httplib nlohmann_json snappy xgboost eigen)
+target_link_libraries(grouper ${PTHREAD_LIB} ${NUMA_LIB} proto_lib httplib nlohmann_json snappy xgboost eigen tcp_lib)
 option(GROUPER_VERBOSE "Enable verbose output for grouper" OFF)
 if(GROUPER_VERBOSE)
     target_compile_definitions(grouper PRIVATE VERBOSE_OUTPUT)
@@ -130,6 +137,12 @@ option(GROUPER_PROFILING "Enable CSV timing for DagCollection::analyze" OFF)
 if(GROUPER_PROFILING)
     target_compile_definitions(grouper PRIVATE PROFILING_ENABLED)
 endif()
+
+# ── monitorServer ─────────────────────────────────────────────
+add_executable(monitorServer computeUnit/MonitorServerUnit.cpp ${CU_SOURCES} ${CU_HEADERS})
+target_include_directories(monitorServer PRIVATE ${CU_INC_DIR} ${GR_INC_DIR} ${EXT_DIR} ${SIMDOPS_TSL_ROOT} ${SIMDOPS_INCLUDE})
+target_link_libraries(monitorServer ${PTHREAD_LIB} ${NUMA_LIB} "tsl" proto_lib httplib nlohmann_json snappy tcp_lib)
+
 
 # ── pg potential bench ────────────────────────────────────────
 add_executable(pg_potential_bench "pg_potential_experiment/pg_potential_bench.cpp")

@@ -19,6 +19,18 @@ enum TcpPackageType {
   QUERY_GROUP = 15;
   SERVER_CONFIGURATION = 16;
   SERVER_CONFIGURATION_RESPONSE = 17;
+  StaticMetricsRequest = 18;
+  CpuInfoDetailed = 19;
+  CpuInfo = 20;
+  MemInfoDetailed = 21;
+  MemInfo = 22;
+  NumaInfo = 23;
+  PciInfo = 24;
+  KernelInfo = 25;
+  DynamicMetricBatch = 26;
+  HostUnitType = 27;
+  HostMachineUuid = 28;
+  LogBatch = 29;
 }
 
 enum UnitType {

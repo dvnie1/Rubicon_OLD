@@ -1,6 +1,6 @@
 #include <infrastructure/PlanOrchestrator.hpp>
 
-#include <infrastructure/Logger.hpp>
+#include <Logger.hpp>
 
 namespace orchestrator {
 
