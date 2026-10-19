@@ -7,9 +7,9 @@
 # =============================================================================
 
 name: "morning_dashboard_refresh"
-scale_factor: 100
-workers: 48
-iterations: 5
+scale_factor: 10
+workers: 4
+iterations: 1
 output_file: "results/wl/results_morning_dashboard.csv"
 
 query_mix:

@@ -194,13 +194,16 @@ def main():
 
     # ---- Connect ----
     client = tcp_client.TCPClient(unit_type=UnitType.QUERY_PLANER, unit_info=args.info, name=args.name)
+    print("Client initialized!")
 
     # Register callbacks
     client.register_callback(TcpPackageType.UUID_FOR_UNIT_RESPONSE, update_uuids)
     client.register_callback(TcpPackageType.PLAN_RESPONSE, plan_finished_cb)
     client.register_callback(TcpPackageType.SERVER_CONFIGURATION_RESPONSE, server_config_response_cb)
 
+    print("Connecting...")
     client.connect(args.ip, args.port)
+    print("Connection established!")
 
     all_results = []
 

@@ -80,6 +80,7 @@ int main(int argc, char** argv) {
         LOG_DEBUG1("[ComputeUnit] Ingesting SSB data from path: " << pathToData << " to NUMA node " << cxl_node << std::endl;)
         datareader::ingestSSBData(pathToData, load_binary, cxl_node);
         LOG_INFO("[ComputeUnit] Data ingested!" << std::endl;)
+        VLOG("This is a VLOG test!");
     }
 
     // Set CPU usage to the local NUMA node

@@ -7,45 +7,56 @@ from proto.UnitDefinition_pb2 import UnitType
 
 class TCPMessage:
     delim: int = 0x5ADB0BB1
+    HEADER_SIZE: int = 40  # 4+4+4+4+8+8+8
 
     @classmethod
     def parse_from_bytes(cls, data: bytes) -> Generator[TCPMessage, None, None]:
-        # @todo: check if current state of data starts with delimiter
-
         pos = 0
         while pos < len(data):
+            if pos + 4 > len(data):
+                break
+
             delim = int.from_bytes(data[pos:pos+4], byteorder='little')
             if delim != TCPMessage.delim:
                 raise ValueError(f"Delimiter error. Expected {TCPMessage.delim:02x}, got {delim:02x}")
+
+            if pos + cls.HEADER_SIZE > len(data):
+                break
+
             unit_type: UnitType = int.from_bytes(data[pos+4:pos+8], byteorder='little')
             payload_size = int.from_bytes(data[pos+8:pos+12], byteorder='little')
             package_type: TcpPackageType = int.from_bytes(data[pos+12:pos+16], byteorder='little')
             src_uuid = int.from_bytes(data[pos+16:pos+24], byteorder='little')
             tgt_uuid = int.from_bytes(data[pos+24:pos+32], byteorder='little')
-            # 32 is the byte offset after all members. 4x 4B + 2x 8B uuid
-            end_payload = pos+32+payload_size
+            host_unit_uuid = int.from_bytes(data[pos+32:pos+40], byteorder='little')
+
+            end_payload = pos + cls.HEADER_SIZE + payload_size
+
             obj = cls.__new__(cls)
             if end_payload <= len(data):
                 obj.__unit_type = unit_type
                 obj.__package_type = package_type
                 obj.__src_uuid = src_uuid
                 obj.__tgt_uuid = tgt_uuid
-                obj.__payload = data[pos+32:end_payload]
+                obj.__host_unit_uuid = host_unit_uuid
+                obj.__payload = data[pos+cls.HEADER_SIZE:end_payload]
                 obj.__complete = True
-                # print(str(obj))
                 yield obj
             else:
                 obj.__complete = False
                 yield obj
+                break
+
             pos = end_payload
 
     def __init__(self, unit_type: UnitType = UnitType.UNDEFINED_UNIT_TYPE, package_type: TcpPackageType = TcpPackageType.UNDEFINED_PACKAGE_TYPE,
-                 src_uuid: int = 0, tgt_uuid: int = 0) -> None:
+                 src_uuid: int = 0, tgt_uuid: int = 0, host_unit_uuid: int = 0) -> None:
         self.__unit_type: UnitType = unit_type
         self.__package_type: TcpPackageType = package_type
         self.__payload: bytearray = bytearray()
         self.__src_uuid: int = src_uuid
         self.__tgt_uuid: int = tgt_uuid
+        self.__host_unit_uuid: int = host_unit_uuid
         self.__complete = False
 
     @property
@@ -89,6 +100,14 @@ class TCPMessage:
         self.__tgt_uuid = val
 
     @property
+    def host_unit_uuid(self) -> int:
+        return self.__host_unit_uuid
+
+    @host_unit_uuid.setter
+    def host_unit_uuid(self, val: int) -> None:
+        self.__host_unit_uuid = val
+
+    @property
     def payload(self) -> bytes:
         return bytes(self.__payload)
 
@@ -121,5 +140,6 @@ class TCPMessage:
         package_type_bytes: bytes = self.package_type.to_bytes(4, byteorder='little')
         src_uuid_bytes: bytes = self.src_uuid.to_bytes(8, byteorder='little')
         tgt_uuid_bytes: bytes = self.tgt_uuid.to_bytes(8, byteorder='little')
+        host_unit_uuid_bytes: bytes = self.host_unit_uuid.to_bytes(8, byteorder='little')
         payload_bytes: bytearray = self.payload
-        return delim_bytes + unit_bytes + payload_size_bytes + package_type_bytes + src_uuid_bytes + tgt_uuid_bytes + payload_bytes
+        return delim_bytes + unit_bytes + payload_size_bytes + package_type_bytes + src_uuid_bytes + tgt_uuid_bytes + host_unit_uuid_bytes + payload_bytes
