@@ -3,8 +3,8 @@
 #include <algorithm>
 
 namespace lb {
-
-    AdaptiveLoadBalancer::AdaptiveLoadBalancer(const std::string& vm_url, const std::string& latency_model, const std::string& ram_model) {
+    AdaptiveLoadBalancer::AdaptiveLoadBalancer(const std::string &vm_url, const std::string &latency_model,
+                                               const std::string &ram_model) {
         metrics_client_ = std::make_unique<MetricsClient>(vm_url);
         metrics_client_->startPolling(1000);
         xgb_ = std::make_unique<XgbEstimator>(latency_model, ram_model);
@@ -16,16 +16,22 @@ namespace lb {
     }
 
     uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
-                                               const std::vector<const plan::PlanDAG*>& dags,
-                                               const std::vector<uint64_t>& available_cus) {
+                                               const std::vector<const plan::PlanDAG *> &dags,
+                                               const std::vector<uint64_t> &available_cus,
+                                               const std::unordered_map<std::string, uint64_t> &schema) {
+
         if (available_cus.empty()) return 0;
 
-        std::vector<float> query_features = QueryVectorizer::vectorizeGroup(dags);
+        std::vector<float> query_features = QueryVectorizer::vectorizeGroup(dags, schema);
+
         ExecutionMetrics prediction = xgb_->predict(query_features);
+        std::cout << "Prediction: " << prediction.latency_ms << "ms " << prediction.ram_peak_bytes << " bytes" <<
+                std::endl;
+
         auto cu_states = metrics_client_->getCurrentStates();
 
-        std::unordered_map<uint64_t, std::vector<float>> cu_bandit_contexts;
-        for (uint64_t cu : available_cus) {
+        std::unordered_map<uint64_t, std::vector<float> > cu_bandit_contexts;
+        for (uint64_t cu: available_cus) {
             float cpu = 0.0f;
             float ram = 0.0f;
             if (cu_states.contains(cu)) {
@@ -41,6 +47,7 @@ namespace lb {
         }
 
         uint64_t selected_cu = sampler_->selectTarget(available_cus, cu_bandit_contexts);
+        std::cout << "Selected Cu: " << selected_cu << std::endl;
 
         {
             std::unique_lock lock(tracking_mutex_);
@@ -53,7 +60,7 @@ namespace lb {
                 dags.size(),
                 true
             };
-            for (const auto* dag : dags) {
+            for (const auto *dag: dags) {
                 plan_to_group_[dag->getPlanId()] = group_id;
             }
         }
@@ -62,6 +69,7 @@ namespace lb {
     }
 
     void AdaptiveLoadBalancer::onPlanCompleted(uint32_t plan_id, bool success) {
+        std::cout << "AdaptiveLoadBalancer::onPlanCompleted" << std::endl;
         PendingGroup finished_group;
         bool group_done = false;
         double actual_latency_ms = 0.0;
@@ -93,7 +101,8 @@ namespace lb {
         }
     }
 
-    void AdaptiveLoadBalancer::finalizeGroup(const PendingGroup& group_info, double actual_latency_ms) {
+    void AdaptiveLoadBalancer::finalizeGroup(const PendingGroup &group_info, double actual_latency_ms) {
+        std::cout << "AdaptiveLoadBalancer::finalizeGroup" << std::endl;
         if (!group_info.all_succeeded) {
             sampler_->updateDistribution(group_info.bandit_context, 0.0);
             return;
@@ -114,5 +123,4 @@ namespace lb {
 
         sampler_->updateDistribution(group_info.bandit_context, reward);
     }
-
 }

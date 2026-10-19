@@ -13,7 +13,6 @@
 #include "PlanDAG.hpp"
 
 namespace lb {
-
     struct PendingGroup {
         uint64_t selected_cu;
         std::vector<float> query_features;
@@ -26,17 +25,20 @@ namespace lb {
 
     class AdaptiveLoadBalancer {
     public:
-        AdaptiveLoadBalancer(const std::string& vm_url, const std::string& latency_model = "", const std::string& ram_model = "");
+        AdaptiveLoadBalancer(const std::string &vm_url, const std::string &latency_model = "",
+                             const std::string &ram_model = "");
+
         ~AdaptiveLoadBalancer();
 
         uint64_t assignGroup(uint64_t group_id,
-                             const std::vector<const plan::PlanDAG*>& dags,
-                             const std::vector<uint64_t>& available_cus);
+                             const std::vector<const plan::PlanDAG *> &dags,
+                             const std::vector<uint64_t> &available_cus,
+                             const std::unordered_map<std::string, uint64_t> &schema);
 
         void onPlanCompleted(uint32_t plan_id, bool success);
 
     private:
-        void finalizeGroup(const PendingGroup& group_info, double actual_latency_ms);
+        void finalizeGroup(const PendingGroup &group_info, double actual_latency_ms);
 
         static constexpr size_t BANDIT_FEATURES = 4;
 
@@ -48,5 +50,4 @@ namespace lb {
         std::unordered_map<uint64_t, PendingGroup> pending_groups_;
         std::unordered_map<uint32_t, uint64_t> plan_to_group_;
     };
-
 }

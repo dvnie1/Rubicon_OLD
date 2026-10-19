@@ -185,7 +185,7 @@ void DagCollection::analyze() {
             group_dags.push_back(&dags_[dagIdx]);
         }
 
-        uint64_t target_cu = load_balancer_.assignGroup(id, group_dags, available_cus);
+        uint64_t target_cu = load_balancer_.assignGroup(id, group_dags, available_cus, schema);
 
         QueryGroup query_group;
         query_group.set_groupid(id);
