@@ -31,8 +31,16 @@ int main(int argc, char* argv[]) {
     const std::string& port_string = parser.takeParseArg<std::string>("-port", "[Info] No Port given. I am listening on port 23232 by default.", "23232", false);
     const bool verbose = parser.takeParseArg<bool>("-v", "", false, false);
 
+    lb::LoadBalancerConfig lbConfig;
+    lbConfig.vm_url = parser.takeParseArg<std::string>("-vm_url", "[Info] Using default VictoriaMetrics URL.", "http://127.0.0.1:8428", false);
+    lbConfig.enable_warmup = parser.takeParseArg<bool>("-lb_warmup", "[Info] Warm-up enabled by default.", true, false);
+    lbConfig.warmup_groups = parser.takeParseArg<size_t>("-lb_warmup_groups", "[Info] Default warm-up groups: 100", 100, false);
+    lbConfig.retrain_interval = parser.takeParseArg<size_t>("-lb_retrain_step", "[Info] Default retrain interval: 50", 50, false);
+    lbConfig.log_csv_path = parser.takeParseArg<std::string>("-lb_log", "[Info] Default LB log path.", "lb_execution_log.csv", false);
+
+    lb::AdaptiveLoadBalancer loadBalancer(lbConfig);
+
     TCPServer server(atol(port_string.c_str()));
-    lb::AdaptiveLoadBalancer loadBalancer("http://127.0.0.1:8428");
 
     std::shared_mutex collectionMutex;
 

@@ -8,9 +8,9 @@
 using json = nlohmann::json;
 
 namespace lb {
-
     MetricsClient::MetricsClient(std::string vm_url)
-        : vm_url_(std::move(vm_url)), interval_ms_(1000) {}
+        : vm_url_(std::move(vm_url)), interval_ms_(1000) {
+    }
 
     MetricsClient::~MetricsClient() {
         stopPolling();
@@ -51,14 +51,14 @@ namespace lb {
         if (res_cpu && res_cpu->status == 200) {
             try {
                 json j = json::parse(res_cpu->body);
-                for (const auto& item : j["data"]["result"]) {
+                for (const auto &item: j["data"]["result"]) {
                     if (item["metric"].contains("host_unit_uuid")) {
                         uint64_t uuid = std::stoull(item["metric"]["host_unit_uuid"].get<std::string>());
                         new_states[uuid].cpu_usage_percent = std::stod(item["value"][1].get<std::string>());
                         std::cout << "CPU state: " << uuid << " " << new_states[uuid].cpu_usage_percent << std::endl;
                     }
                 }
-            } catch (const std::exception& e) {
+            } catch (const std::exception &e) {
                 std::cerr << "[MetricsClient] JSON parse error (CPU): " << e.what() << "\n";
             }
         }
@@ -68,19 +68,19 @@ namespace lb {
         if (res_ram && res_ram->status == 200) {
             try {
                 json j = json::parse(res_ram->body);
-                for (const auto& item : j["data"]["result"]) {
+                for (const auto &item: j["data"]["result"]) {
                     if (item["metric"].contains("host_unit_uuid")) {
                         uint64_t uuid = std::stoull(item["metric"]["host_unit_uuid"].get<std::string>());
                         new_states[uuid].ram_available_bytes = std::stod(item["value"][1].get<std::string>());
                     }
                 }
-            } catch (const std::exception& e) {
+            } catch (const std::exception &e) {
                 std::cerr << "[MetricsClient] JSON parse error (RAM): " << e.what() << "\n";
             }
         }
 
         std::unique_lock lock(state_mutex_);
-        for (const auto& [uuid, state] : new_states) {
+        for (const auto &[uuid, state]: new_states) {
             current_states_[uuid].cpu_usage_percent = state.cpu_usage_percent;
             if (state.ram_available_bytes > 0) {
                 current_states_[uuid].ram_available_bytes = state.ram_available_bytes;
@@ -88,4 +88,32 @@ namespace lb {
         }
     }
 
+    double MetricsClient::getPeakRamInWindow(uint64_t cu_uuid, int64_t start_ts_ms, int64_t end_ts_ms) const {
+        httplib::Client cli(vm_url_);
+
+        int64_t duration_ms = std::max<int64_t>(end_ts_ms - start_ts_ms, 1000);
+        double end_sec = static_cast<double>(end_ts_ms) / 1000.0;
+
+        std::string query_path =
+                "/api/v1/query?query=max_over_time(memory_used_bytes{scope=\"process\",host_unit_uuid=\""
+                + std::to_string(cu_uuid) + "\"}[" + std::to_string(duration_ms) + "ms])"
+                + "&time=" + std::to_string(end_sec);
+
+        auto res = cli.Get(query_path.c_str());
+        if (res && res->status == 200) {
+            try {
+                json j = json::parse(res->body);
+                const auto &results = j["data"]["result"];
+                if (!results.empty()) {
+                    return std::stod(results[0]["value"][1].get<std::string>());
+                }
+            } catch (const std::exception &e) {
+                std::cerr << "[MetricsClient] Historical RAM parse error: " << e.what() << "\n";
+            }
+        }
+
+        auto states = getCurrentStates();
+        auto it = states.find(cu_uuid);
+        return (it != states.end()) ? it->second.ram_available_bytes : 0.0;
+    }
 } // namespace lb

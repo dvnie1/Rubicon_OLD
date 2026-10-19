@@ -12,7 +12,6 @@ namespace lb {
     struct CUState {
         double cpu_usage_percent = 0.0;
         double ram_available_bytes = 0.0;
-        // TODO: add further metrics, such as total memory, currently used memory, etc.
     };
 
     class MetricsClient {
@@ -21,10 +20,10 @@ namespace lb {
         ~MetricsClient();
 
         void startPolling(uint32_t interval_ms);
-
         void stopPolling();
 
         std::unordered_map<uint64_t, CUState> getCurrentStates() const;
+        double getPeakRamInWindow(uint64_t cu_uuid, int64_t start_ts_ms, int64_t end_ts_ms) const;
 
     private:
         void pollLoop();
@@ -40,4 +39,4 @@ namespace lb {
         std::thread poll_thread_;
     };
 
-} // namespace lb
+}
