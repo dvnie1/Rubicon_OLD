@@ -265,6 +265,15 @@ void NativeCollector::collect_memory_metrics(metrics::DynamicMetricBatch &batch,
         std::cerr << "[NativeCollector] Error: Cannot open /proc/meminfo" << std::endl;
     }
 
+
+    auto *m_avail = batch.add_metrics();
+    m_avail->set_name("memory_available_bytes");
+    (*m_avail->mutable_labels())["scope"] = "host";
+    (*m_avail->mutable_labels())["host_machine_uuid"] = host_machine_uuid_string;
+    m_avail->set_value(mem_avail_kb * 1024.0);
+    m_avail->set_timestamp_ms(now_ms);
+
+
     if (collect_global && mem_total_kb > 0) {
         double mem_used_kb = mem_total_kb - mem_avail_kb;
         double usage_pct = (mem_used_kb / mem_total_kb) * 100.0;

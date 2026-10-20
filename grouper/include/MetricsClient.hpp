@@ -12,6 +12,7 @@ namespace lb {
     struct CUState {
         double cpu_usage_percent = 0.0;
         double ram_available_bytes = 0.0;
+        double ram_used_bytes = 0.0;
     };
 
     class MetricsClient {
