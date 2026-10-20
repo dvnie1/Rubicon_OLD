@@ -47,7 +47,7 @@ namespace lb {
         httplib::Client cli(vm_url_);
         std::unordered_map<uint64_t, CUState> new_states;
 
-        auto res_cpu = cli.Get("/api/v1/query?query=max_over_time(cpu_usage_percent{scope=\"global\"}[5s])");
+        auto res_cpu = cli.Get("/api/v1/query?query=avg_over_time(cpu_usage_percent{scope=\"process\"}[5s])");
         if (res_cpu && res_cpu->status == 200) {
             try {
                 json j = json::parse(res_cpu->body);
@@ -64,7 +64,7 @@ namespace lb {
         }
 
         // TODO: memory_used_bytes is not ram_available_bytes !!!
-        auto res_ram = cli.Get("/api/v1/query?query=memory_used_bytes{scope=\"global\"}");
+        auto res_ram = cli.Get("/api/v1/query?query=max_over_time(memory_used_bytes{scope=\"process\"}[5s])");
         if (res_ram && res_ram->status == 200) {
             try {
                 json j = json::parse(res_ram->body);
