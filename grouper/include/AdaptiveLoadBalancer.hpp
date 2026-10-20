@@ -8,6 +8,7 @@
 #include <shared_mutex>
 #include <mutex>
 #include <atomic>
+#include <thread>
 #include <chrono>
 #include <fstream>
 
@@ -24,9 +25,10 @@ struct LoadBalancerConfig {
     std::string ram_model_path = "";
     std::string log_csv_path = "lb_execution_log.csv";
     bool enable_warmup = true;
+    bool filter_overlapped_for_xgb = false;
     size_t warmup_groups = 100;
     size_t retrain_interval = 50;
-    size_t num_trees = 200;
+    size_t num_trees = 100;
 };
 
 struct PendingGroup {
@@ -35,9 +37,11 @@ struct PendingGroup {
     std::vector<float> query_features;
     std::vector<float> bandit_context;
     ExecutionMetrics prediction;
+    double baseline_ram_bytes;
     std::chrono::steady_clock::time_point start_steady;
     int64_t start_sys_ms;
     size_t remaining_plans;
+    size_t max_concurrent_on_cu;
     bool was_warmup;
     bool all_succeeded = true;
 };
@@ -57,8 +61,9 @@ public:
 private:
     void finalizeGroup(const PendingGroup& group_info, double actual_latency_ms, int64_t end_sys_ms);
     void logGroupExecution(const PendingGroup& group_info, const ExecutionMetrics& actuals);
+    void launchAsyncRetrain(std::vector<float> features, std::vector<float> latencies, std::vector<float> rams, size_t count, bool is_warmup_finish);
 
-    static constexpr size_t BANDIT_FEATURES = 4;
+    static constexpr size_t BANDIT_FEATURES = 5;
 
     LoadBalancerConfig config_;
     std::unique_ptr<MetricsClient> metrics_client_;
@@ -66,11 +71,14 @@ private:
     std::unique_ptr<ThompsonSampler> sampler_;
 
     std::atomic<bool> is_ready_{false};
+    std::atomic<bool> is_retraining_{false};
     std::atomic<size_t> rr_counter_{0};
+    std::thread retrain_thread_;
 
     mutable std::shared_mutex tracking_mutex_;
     std::unordered_map<uint64_t, PendingGroup> pending_groups_;
     std::unordered_map<uint32_t, uint64_t> plan_to_group_;
+    std::unordered_map<uint64_t, size_t> cu_in_flight_;
 
     std::mutex dataset_mutex_;
     std::vector<float> history_features_;
