@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 project(DisaggSIMDProcessor LANGUAGES CXX)
 
+# Disable auto-detection of compression libs to avoid link errors
+set(HTTPLIB_USE_ZSTD OFF CACHE BOOL "" FORCE)
+set(HTTPLIB_USE_BROTLI OFF CACHE BOOL "" FORCE)
+# Verhindert, dass find_package(ZSTD) überhaupt ausgeführt wird
+set(CMAKE_DISABLE_FIND_PACKAGE_ZSTD TRUE)
+set(CMAKE_DISABLE_FIND_PACKAGE_zstd TRUE)
+
 include(FetchContent)
 
 FetchContent_Declare(
