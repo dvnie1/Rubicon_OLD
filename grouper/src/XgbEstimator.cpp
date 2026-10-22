@@ -91,7 +91,10 @@ void XgbEstimator::retrainModels(const std::vector<float>& flat_features,
 }
 
 ExecutionMetrics XgbEstimator::predict(const std::vector<float>& features) const {
-    if (features.empty()) return {0.0, 0.0};
+    if (features.empty()) {
+        std::cout << "[XGB ERROR]: received empty features. Returning {0, 0}." << std::endl;
+        return {0.0, 0.0};
+    }
 
     std::shared_lock lock(mutex_);
 

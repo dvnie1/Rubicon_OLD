@@ -220,6 +220,7 @@ int main(int argc, char* argv[]) {
         if (request.has_threshold() || request.has_windowsizems() || request.has_maxoverhead()) {
             const uint64_t threshold = request.has_threshold() ? request.threshold() : 10;
             const auto window_size = std::chrono::milliseconds(request.has_windowsizems() ? request.windowsizems() : 100);
+            std::cout << "WINDOW SIZE SET TO: " << window_size << std::endl;
             const float max_overhead = request.has_maxoverhead() ? request.maxoverhead() : 2.0f;
 
             std::unique_lock lock(collectionMutex);

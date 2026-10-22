@@ -10,7 +10,9 @@ using json = nlohmann::json;
 namespace lb {
 
 MetricsClient::MetricsClient(std::string vm_url)
-    : vm_url_(std::move(vm_url)), interval_ms_(1000) {}
+    : vm_url_(std::move(vm_url)), interval_ms_(1000) {
+    std::cout << "[MetricsClient] Initialized!" << std::endl;
+}
 
 MetricsClient::~MetricsClient() {
     stopPolling();
@@ -36,6 +38,7 @@ std::unordered_map<uint64_t, CUState> MetricsClient::getCurrentStates() const {
 }
 
 void MetricsClient::pollLoop() {
+    std::cout << "[MetricsClient] Starting polling thread..." << std::endl;
     while (active_) {
         fetchAndParseMetrics();
         std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms_));

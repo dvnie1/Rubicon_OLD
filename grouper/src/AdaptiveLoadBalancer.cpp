@@ -56,7 +56,10 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
                                            const std::vector<const plan::PlanDAG*>& dags,
                                            const std::vector<uint64_t>& available_cus,
                                            const std::unordered_map<std::string, uint64_t>& schema) {
-    if (available_cus.empty()) return 0;
+    if (available_cus.empty()) {
+        std::cout << "[LOAD-BALANCER ERROR]: available_cus is empty!" << std::endl;
+        return 0;
+    }
 
     std::vector<float> query_features = QueryVectorizer::vectorizeGroup(dags, schema);
     bool ready = is_ready_.load(std::memory_order_acquire);

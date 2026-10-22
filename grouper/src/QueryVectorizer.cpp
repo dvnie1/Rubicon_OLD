@@ -88,7 +88,10 @@ namespace lb {
         const std::unordered_map<std::string, uint64_t> &schema
     ) {
         std::vector<float> result(GROUP_VECTOR_SIZE, 0.0f);
-        if (dags.empty()) return result;
+        if (dags.empty()) {
+            std::cout << "[VECTORIZER ERROR]: No dags found!" << std::endl;
+            return result;
+        }
 
         const size_t n = dags.size();
         std::vector<std::array<float, NUM_BASE_FEATURES> > matrix;

@@ -105,6 +105,8 @@ def run_random_load(
         max_group_size: int,
         workers: int,
         window_size: float,
+        warmup: int,
+        max_in_flight: int = 4,
         threshold: Optional[int] = None,
         max_overhead: Optional[float] = None,
 ) -> list[QueryResult]:
@@ -127,44 +129,93 @@ def run_random_load(
     tracker = InFlightTracker()
     seq = SequenceCounter()
     results: list[QueryResult] = []
+    results_lock = threading.Lock()
     window_s = window_size / 1000.0
 
-    for group in range(1, groups + 1):
+    def fire_query(q_name: str, iteration_idx: int):
+        query_msg = _build_query(q_name, src_uuid, tgt_uuid, scale_factor)
+        submit_ts = datetime.now().timestamp()
+        seq_num = seq.next()
+
+        res = _tracked_run_query(
+            client=client,
+            query=query_msg,
+            query_name=q_name,
+            mode="random_load",
+            scale_factor=scale_factor,
+            iteration=iteration_idx,
+            workers=workers,
+            tracker=tracker,
+            workload_name="random_load",
+            phase_name=None,
+            user_id=None,
+            sequence_number=seq_num,
+            planned_delay_s=0,
+            submit_timestamp=submit_ts,
+        )
+        res.window_size = window_size
+        if max_overhead is not None:
+            res.max_overhead = max_overhead
+
+        with results_lock:
+            results.append(res)
+
+    print(f"\n\n\nStarting isolated warmup with {warmup} windows\n\n\n")
+
+    for w in range(warmup):
         num_queries = random.randint(1, max_group_size)
+        window_threads: list[threading.Thread] = []
 
         for i in range(num_queries):
             query_name = random.choice(queries)
-            query_msg = _build_query(query_name, src_uuid, tgt_uuid, scale_factor)
-            submit_ts = datetime.now().timestamp()
-            seq_num = seq.next()
-
-            res = _tracked_run_query(
-                client=client,
-                query=query_msg,
-                query_name=query_name,
-                mode="random_load",
-                scale_factor=scale_factor,
-                iteration=group,
-                workers=workers,
-                tracker=tracker,
-                workload_name="random_load",
-                phase_name=None,
-                user_id=None,
-                sequence_number=seq_num,
-                planned_delay_s=0,
-                submit_timestamp=submit_ts,
-            )
-            res.window_size = window_size
-            if max_overhead is not None:
-                res.max_overhead = max_overhead
-
-            results.append(res)
-            complete_plans.clear()
+            t = threading.Thread(target=fire_query, args=(query_name, w))
+            t.start()
+            window_threads.append(t)
 
             if i < num_queries - 1:
                 time.sleep(random.uniform(0.001, window_s / num_queries))
 
+        for t in window_threads:
+            t.join()
+        complete_plans.clear()
+
+        print(f"Warmup {w + 1}/{warmup} completed.")
+        time.sleep(0.2)
+
+    print("\n\n\nWarmup completed\n\n\n")
+
+    in_flight_sem = threading.Semaphore(max_in_flight)
+    waiter_threads: list[threading.Thread] = []
+
+    def release_when_done(threads_to_wait: list[threading.Thread], group_idx: int):
+        for t in threads_to_wait:
+            t.join()
+        in_flight_sem.release()
+        print(f"Group window {group_idx}/{groups} completed.")
+
+    for group in range(1, groups + 1):
+        in_flight_sem.acquire()
+        num_queries = random.randint(1, max_group_size)
+        window_threads: list[threading.Thread] = []
+
+        for i in range(num_queries):
+            query_name = random.choice(queries)
+            t = threading.Thread(target=fire_query, args=(query_name, group))
+            t.start()
+            window_threads.append(t)
+
+            if i < num_queries - 1:
+                time.sleep(random.uniform(0.001, window_s / num_queries))
+
+        waiter = threading.Thread(target=release_when_done, args=(window_threads, group))
+        waiter.start()
+        waiter_threads.append(waiter)
+
         time.sleep(window_s * 1.2)
+
+    for wt in waiter_threads:
+        wt.join()
+    complete_plans.clear()
 
     return results
 
@@ -182,6 +233,8 @@ def main():
     parser.add_argument("--threshold", type=int, default=10)
     parser.add_argument("--max-overhead", type=float, default=2.0)
     parser.add_argument("-o", "--output", default=None)
+    parser.add_argument("--warmup", type=int, default=100)
+    parser.add_argument("--max-in-flight", type=int, default=4)
     args = parser.parse_args()
 
     for q in args.queries:
@@ -208,8 +261,10 @@ def main():
             max_group_size=args.max_group_size,
             workers=args.workers,
             window_size=args.window_size,
+            warmup=args.warmup,
             threshold=args.threshold,
             max_overhead=args.max_overhead,
+            max_in_flight=args.max_in_flight
         )
 
         out_path = args.output or f"results/random_load_{datetime.now().strftime('%Y_%m_%d-%H_%M_%S')}.csv"
