@@ -31,6 +31,7 @@ enum TcpPackageType {
   HostUnitType = 27;
   HostMachineUuid = 28;
   LogBatch = 29;
+  WORKER_COUNT_UPDATE = 30;
 }
 
 enum UnitType {

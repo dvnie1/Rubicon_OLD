@@ -178,6 +178,11 @@ void WorkerPool::set_affinity_to_node(const ssize_t node) {
     }
 }
 
+
+int WorkerPool::get_active_workers() {
+    return active_workers.load();
+}
+
 UnitWorker::UnitWorker(WorkerPool* pool, cpu_set_t affinity) : owning_pool(pool) {
     EventLoop worker_loop = [this]() {
         while (true) {

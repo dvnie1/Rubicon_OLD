@@ -15,6 +15,7 @@
 #include "WorkItem.pb.h"
 #include "WorkRequest.pb.h"
 #include "WorkResponse.pb.h"
+#include "WorkerCount.pb.h"
 
 #include "AdaptiveLoadBalancer.hpp"
 
@@ -255,6 +256,14 @@ int main(int argc, char* argv[]) {
         forward_cb(meta, data, len);
     };
 
+    auto worker_count_update_cb = [&loadBalancer](TCPMetaInfo* meta, void* data, size_t len) {
+        lb::WorkerCount worker_count;
+        worker_count.ParseFromArray(data, len);
+        // TODO: hier weitermach
+        //loadBalancer.onWorkerCount(meta->src_uuid, worker_count.worker_count());
+        std::cout << "Received new worker count " << worker_count.worker_count() << std::endl;
+    };
+
     server.addCallback(TcpPackageType::TEXT, text_cb);
     server.addCallback(TcpPackageType::WORK, forward_cb);
     server.addCallback(TcpPackageType::QUERY_PLAN, forward_cb);
@@ -267,6 +276,7 @@ int main(int argc, char* argv[]) {
     server.addCallback(TcpPackageType::CONFIGURATION_ACTION, forward_cb);
     server.addCallback(TcpPackageType::PLAN_RESPONSE, plan_response_cb);
     server.addCallback(TcpPackageType::SERVER_CONFIGURATION, server_configuration_cb);
+    server.addCallback(TcpPackageType::WORKER_COUNT_UPDATE, worker_count_update_cb);
 
     std::string content;
     std::string op;

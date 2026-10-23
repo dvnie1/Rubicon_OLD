@@ -121,6 +121,8 @@ class WorkerPool {
      */
     void set_affinity_to_node(const ssize_t node);
 
+    int get_active_workers();
+
    private:
     std::atomic<size_t> active_workers;
     TaskHandlerCallback onFinish = nullptr;

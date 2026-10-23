@@ -5,6 +5,7 @@
 #include <WorkItem.pb.h>
 #include <WorkRequest.pb.h>
 #include <WorkResponse.pb.h>
+#include "WorkerCount.pb.h"
 #include <numa.h>
 
 #include <infrastructure/ArgParser.hpp>
@@ -56,6 +57,30 @@ class IdleTestOp : public AbstractOperator {
         return response;
     }
 };
+
+
+void send_worker_count(tuddbs::TCPClient *client, int worker_count) {
+    using namespace tuddbs;
+    LOG_DEBUG1("[ComputeUnit] Sending worker count." << std::endl;)
+    lb::WorkerCount wc;
+    wc.set_worker_count(worker_count);
+
+    TCPMetaInfo info;
+    info.package_type = TcpPackageType::WORKER_COUNT_UPDATE;
+    info.payload_size = wc.ByteSizeLong();
+    info.src_uuid = client->getUuid();
+    void* out_mem = malloc(sizeof(TCPMetaInfo) + info.payload_size);
+    if (!out_mem) {
+        std::cerr << "[ComputeUnit::send_worker_count] Wasn't able to allocate the requested memory!" << std::endl;
+        exit(-1);
+    }
+
+    const size_t message_size = tuddbs::Utility::serializeItemToMemory(out_mem, wc, info);
+
+    client->notifyHost(out_mem, message_size);
+    free(out_mem);
+}
+
 
 int main(int argc, char** argv) {
     ArgParser parser(argc, argv);
@@ -239,7 +264,7 @@ int main(int argc, char** argv) {
 
     orch.setDispatcher(&dispatcher);
 
-    auto updateUnitInfo_cb = [&client, prettyName](tuddbs::TCPMetaInfo* meta, void* data, size_t len) -> void {
+    auto updateUnitInfo_cb = [&client, prettyName, worker](tuddbs::TCPMetaInfo* meta, void* data, size_t len) -> void {
         using namespace tuddbs;
         LOG_DEBUG1("[UpdateUnitInfo Callback] Invoked." << std::endl;)
         UnitDefinition unit;
@@ -260,6 +285,8 @@ int main(int argc, char** argv) {
 
         client.notifyHost(out_mem, message_size);
         free(out_mem);
+
+        send_worker_count(&client, worker);
     };
 
     auto text_cb = [&client](tuddbs::TCPMetaInfo* meta, void* data, size_t len) -> void {
@@ -303,6 +330,7 @@ int main(int argc, char** argv) {
             client.textResponse("I am a Single Core Executor.", 0);
 #else
             pool.update_workers(ci.worker_count());
+            send_worker_count(&client, pool.get_active_workers());
 #endif
         } else if (ci.type() == ddd::config::RESET_CATALOG) {
             LOG_INFO("[ComputeUnit ] I am clearing my DataCatalog." << std::endl;)
