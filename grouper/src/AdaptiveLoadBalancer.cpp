@@ -21,7 +21,7 @@ AdaptiveLoadBalancer::AdaptiveLoadBalancer(LoadBalancerConfig config)
     xgb_ = std::make_unique<XgbEstimator>(
         config_.latency_model_path,
         config_.ram_model_path,
-        QueryVectorizer::GROUP_VECTOR_SIZE,
+        XGB_FEATURES,
         config_.num_trees
     );
     sampler_ = std::make_unique<ThompsonSampler>(BANDIT_FEATURES, 1.0);
@@ -33,7 +33,7 @@ AdaptiveLoadBalancer::AdaptiveLoadBalancer(LoadBalancerConfig config)
         log_file_.open(config_.log_csv_path, std::ios::app);
         if (log_file_.is_open() && !exists) {
             log_file_ << "timestamp_ms,group_id,selected_cu,is_warmup,concurrent_on_cu,pred_latency_ms,actual_latency_ms,pred_ram_bytes,actual_ram_bytes";
-            for (size_t i = 0; i < QueryVectorizer::GROUP_VECTOR_SIZE; ++i) {
+            for (size_t i = 0; i < XGB_FEATURES; ++i) {
                 log_file_ << ",f_" << i;
             }
             log_file_ << "\n";
@@ -61,37 +61,54 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
         return 0;
     }
 
-    std::vector<float> query_features = QueryVectorizer::vectorizeGroup(dags, schema);
+    std::vector<float> base_query_features = QueryVectorizer::vectorizeGroup(dags, schema);
     bool ready = is_ready_.load(std::memory_order_acquire);
     auto cu_states = metrics_client_->getCurrentStates();
 
-    ExecutionMetrics prediction{0.0, 0.0};
     uint64_t selected_cu = 0;
+    ExecutionMetrics selected_prediction{0.0, 0.0};
     std::vector<float> selected_context(BANDIT_FEATURES, 0.0f);
+    std::vector<float> selected_query_features;
 
     std::unordered_map<uint64_t, size_t> current_in_flight;
     std::unordered_map<uint64_t, size_t> current_workers;
+    std::unordered_map<uint64_t, double> current_reserved_ram;
+    std::unordered_map<uint64_t, double> current_reserved_lat;
     {
         std::shared_lock lock(tracking_mutex_);
         current_in_flight = cu_in_flight_;
         current_workers = cu_workers_;
+        current_reserved_ram = cu_reserved_ram_;
+        current_reserved_lat = cu_reserved_lat_;
     }
 
     if (!ready) {
         size_t idx = rr_counter_.fetch_add(1, std::memory_order_relaxed) % available_cus.size();
         selected_cu = available_cus[idx];
+        selected_query_features = std::move(base_query_features);
+        selected_query_features.push_back(static_cast<float>(current_workers[selected_cu]));
     } else {
-        prediction = xgb_->predict(query_features);
-
+        std::unordered_map<uint64_t, ExecutionMetrics> cu_preds;
+        std::unordered_map<uint64_t, std::vector<float>> cu_q_feats;
         std::vector<uint64_t> valid_cus;
+
         for (uint64_t cu : available_cus) {
-            if (!cu_states.contains(cu) || cu_states[cu].ram_available_bytes >= prediction.ram_peak_bytes * 1.1) {
+            std::vector<float> q_feat = base_query_features;
+            q_feat.push_back(static_cast<float>(current_workers[cu]));
+
+            ExecutionMetrics pred = xgb_->predict(q_feat);
+            cu_preds[cu] = pred;
+            cu_q_feats[cu] = std::move(q_feat);
+
+            double expected_total_ram = current_reserved_ram[cu] + pred.ram_peak_bytes;
+            if (!cu_states.contains(cu) || cu_states[cu].ram_available_bytes >= expected_total_ram * 1.1) {
                 valid_cus.push_back(cu);
             }
         }
-        const auto& candidate_cus = valid_cus.empty() ? available_cus : valid_cus;
 
+        const auto& candidate_cus = valid_cus.empty() ? available_cus : valid_cus;
         std::unordered_map<uint64_t, std::vector<float>> cu_bandit_contexts;
+
         for (uint64_t cu : candidate_cus) {
             float cpu_norm = 0.0f;
             float ram_avail_gb = 0.0f;
@@ -99,22 +116,26 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
                 cpu_norm = static_cast<float>(cu_states[cu].cpu_usage_percent / 100.0);
                 ram_avail_gb = static_cast<float>(cu_states[cu].ram_available_bytes / (1024.0 * 1024.0 * 1024.0));
             }
+
+            double effective_free_ram_gb = std::max(0.0, ram_avail_gb - (current_reserved_ram[cu] / (1024.0 * 1024.0 * 1024.0)));
+            double expected_queue_lat_sec = (current_reserved_lat[cu] + cu_preds[cu].latency_ms) / 1000.0;
+            float pred_ram_gb = static_cast<float>(cu_preds[cu].ram_peak_bytes / (1024.0 * 1024.0 * 1024.0));
             float in_flight = static_cast<float>(current_in_flight[cu]);
             float workers = static_cast<float>(current_workers[cu]);
-            float pred_lat_sec = static_cast<float>(prediction.latency_ms / 1000.0);
-            float pred_ram_gb = static_cast<float>(prediction.ram_peak_bytes / (1024.0 * 1024.0 * 1024.0));
 
             cu_bandit_contexts[cu] = {
-                pred_lat_sec,
+                static_cast<float>(expected_queue_lat_sec),
                 pred_ram_gb,
                 cpu_norm,
-                ram_avail_gb,
+                static_cast<float>(effective_free_ram_gb),
                 in_flight,
                 workers
             };
         }
 
         selected_cu = sampler_->selectTarget(candidate_cus, cu_bandit_contexts);
+        selected_prediction = cu_preds[selected_cu];
+        selected_query_features = std::move(cu_q_feats[selected_cu]);
         selected_context = std::move(cu_bandit_contexts[selected_cu]);
     }
 
@@ -123,6 +144,8 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
     {
         std::unique_lock lock(tracking_mutex_);
         size_t active_on_cu = ++cu_in_flight_[selected_cu];
+        cu_reserved_ram_[selected_cu] += selected_prediction.ram_peak_bytes;
+        cu_reserved_lat_[selected_cu] += selected_prediction.latency_ms;
 
         for (auto& [gid, pg] : pending_groups_) {
             if (pg.selected_cu == selected_cu) {
@@ -133,9 +156,9 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
         pending_groups_[group_id] = PendingGroup{
             group_id,
             selected_cu,
-            std::move(query_features),
+            std::move(selected_query_features),
             std::move(selected_context),
-            prediction,
+            selected_prediction,
             baseline_ram,
             std::chrono::steady_clock::now(),
             currentEpochMs(),
@@ -180,6 +203,8 @@ void AdaptiveLoadBalancer::onPlanCompleted(uint32_t plan_id, bool success) {
             if (cu_in_flight_[cu] > 0) {
                 cu_in_flight_[cu]--;
             }
+            cu_reserved_ram_[cu] = std::max(0.0, cu_reserved_ram_[cu] - grp_it->second.prediction.ram_peak_bytes);
+            cu_reserved_lat_[cu] = std::max(0.0, cu_reserved_lat_[cu] - grp_it->second.prediction.latency_ms);
 
             finished_group = std::move(grp_it->second);
             pending_groups_.erase(grp_it);
@@ -303,10 +328,8 @@ void AdaptiveLoadBalancer::launchAsyncRetrain(std::vector<float> features,
 }
 
 void AdaptiveLoadBalancer::onWorkerCount(uint64_t uuid, size_t workers) {
-    {
-        std::shared_lock lock(tracking_mutex_);
-        cu_workers_[uuid] = workers;
-    }
+    std::unique_lock lock(tracking_mutex_);
+    cu_workers_[uuid] = workers;
 }
 
 void AdaptiveLoadBalancer::logGroupExecution(const PendingGroup& group_info, const ExecutionMetrics& actuals) {
@@ -330,4 +353,4 @@ void AdaptiveLoadBalancer::logGroupExecution(const PendingGroup& group_info, con
     log_file_.flush();
 }
 
-}
+} // namespace lb
