@@ -70,9 +70,11 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
     std::vector<float> selected_context(BANDIT_FEATURES, 0.0f);
 
     std::unordered_map<uint64_t, size_t> current_in_flight;
+    std::unordered_map<uint64_t, size_t> current_workers;
     {
         std::shared_lock lock(tracking_mutex_);
         current_in_flight = cu_in_flight_;
+        current_workers = cu_workers_;
     }
 
     if (!ready) {
@@ -98,6 +100,7 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
                 ram_avail_gb = static_cast<float>(cu_states[cu].ram_available_bytes / (1024.0 * 1024.0 * 1024.0));
             }
             float in_flight = static_cast<float>(current_in_flight[cu]);
+            float workers = static_cast<float>(current_workers[cu]);
             float pred_lat_sec = static_cast<float>(prediction.latency_ms / 1000.0);
             float pred_ram_gb = static_cast<float>(prediction.ram_peak_bytes / (1024.0 * 1024.0 * 1024.0));
 
@@ -106,7 +109,8 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
                 pred_ram_gb,
                 cpu_norm,
                 ram_avail_gb,
-                in_flight
+                in_flight,
+                workers
             };
         }
 
@@ -296,6 +300,13 @@ void AdaptiveLoadBalancer::launchAsyncRetrain(std::vector<float> features,
         }
         is_retraining_.store(false, std::memory_order_release);
     });
+}
+
+void AdaptiveLoadBalancer::onWorkerCount(uint64_t uuid, size_t workers) {
+    {
+        std::shared_lock lock(tracking_mutex_);
+        cu_workers_[uuid] = workers;
+    }
 }
 
 void AdaptiveLoadBalancer::logGroupExecution(const PendingGroup& group_info, const ExecutionMetrics& actuals) {

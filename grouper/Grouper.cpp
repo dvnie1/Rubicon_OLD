@@ -259,9 +259,7 @@ int main(int argc, char* argv[]) {
     auto worker_count_update_cb = [&loadBalancer](TCPMetaInfo* meta, void* data, size_t len) {
         lb::WorkerCount worker_count;
         worker_count.ParseFromArray(data, len);
-        // TODO: hier weitermach
-        //loadBalancer.onWorkerCount(meta->src_uuid, worker_count.worker_count());
-        std::cout << "Received new worker count " << worker_count.worker_count() << std::endl;
+        loadBalancer.onWorkerCount(meta->src_uuid, worker_count.worker_count());
     };
 
     server.addCallback(TcpPackageType::TEXT, text_cb);
