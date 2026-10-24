@@ -22,6 +22,7 @@ namespace lb {
         float max_depth = 0.0f;
         float simd_level = 1.0f;
 
+        /*
         std::unordered_set<std::string> scanned_tables;
         for (const auto &[col_name, _]: dag.getBaseColumns()) {
             auto pos = col_name.find(".");
@@ -38,6 +39,20 @@ namespace lb {
 
         if (input_rows > 0.0f) {
             input_rows = std::log10(input_rows);
+        }*/
+
+        std::unordered_map<std::string, uint64_t> table_max_size;
+        for (const auto& [col_name, _] : dag.getBaseColumns()) {
+            auto it = schema.find(col_name);
+            if (it != schema.end()) {
+                auto pos = col_name.find('.');
+                std::string table_name = (pos != std::string::npos) ? col_name.substr(0, pos) : col_name;
+                table_max_size[table_name] = std::max(table_max_size[table_name], it->second);
+            }
+        }
+
+        for (const auto& [_, size_val] : table_max_size) {
+            input_rows += static_cast<float>(size_val);
         }
 
         for (const auto &[id, item]: dag.getAllItems()) {
