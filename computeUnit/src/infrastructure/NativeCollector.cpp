@@ -402,9 +402,13 @@ void NativeCollector::collect_network_metrics(metrics::DynamicMetricBatch &batch
 
 void NativeCollector::collect_infiniband_metrics(metrics::DynamicMetricBatch &batch, int64_t now_ms) {
     std::string base_path = "/sys/class/infiniband";
+    static bool logged_ib_error = false;
 
     if (!fs::exists(base_path)) {
-        std::cerr << "[NativeCollector] Error: Infiniband base path does not exist!" << std::endl;
+        if (!logged_ib_error) {
+            std::cerr << "[NativeCollector] Error: Infiniband base path does not exist! Suppressing further warnings." << std::endl;
+            logged_ib_error = true;
+        }
         return;
     }
 

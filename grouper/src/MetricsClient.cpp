@@ -79,26 +79,13 @@ void MetricsClient::fetchAndParseMetrics() {
         }
     }
 
-    auto res_used = cli.Get("/api/v1/query?query=last_over_time(memory_used_bytes{scope=\"process\"}[5s])");
-    if (res_used && res_used->status == 200) {
-        try {
-            json j = json::parse(res_used->body);
-            for (const auto &item : j["data"]["result"]) {
-                if (item["metric"].contains("host_unit_uuid")) {
-                    uint64_t uuid = std::stoull(item["metric"]["host_unit_uuid"].get<std::string>());
-                    new_states[uuid].ram_used_bytes = std::stod(item["value"][1].get<std::string>());
-                }
-            }
-        } catch (const std::exception &e) {
-            std::cerr << "[MetricsClient] JSON parse error (RAM Used): " << e.what() << "\n";
-        }
-    }
-
     std::unique_lock lock(state_mutex_);
     for (const auto &[uuid, state] : new_states) {
         current_states_[uuid].cpu_usage_percent = state.cpu_usage_percent;
-        current_states_[uuid].ram_available_bytes = state.ram_available_bytes;
-        current_states_[uuid].ram_used_bytes = state.ram_used_bytes;
+        if (state.ram_available_bytes > 0.0) {
+            current_states_[uuid].ram_available_bytes = state.ram_available_bytes;
+        }
+        current_states_[uuid].ram_used_bytes = 0.0;
     }
 }
 
@@ -107,28 +94,38 @@ double MetricsClient::getPeakRamInWindow(uint64_t cu_uuid, int64_t start_ts_ms, 
 
     int64_t duration_ms = std::max<int64_t>(end_ts_ms - start_ts_ms, 1000);
     double end_sec = static_cast<double>(end_ts_ms) / 1000.0;
+    std::string uuid_str = std::to_string(cu_uuid);
+    std::string window_str = std::to_string(duration_ms) + "ms";
+    std::string time_param = "&time=" + std::to_string(end_sec);
 
-    std::string query_path =
-            "/api/v1/query?query=max_over_time(memory_used_bytes{scope=\"process\",host_unit_uuid=\""
-            + std::to_string(cu_uuid) + "\"}[" + std::to_string(duration_ms) + "ms])"
-            + "&time=" + std::to_string(end_sec);
-
-    auto res = cli.Get(query_path.c_str());
-    if (res && res->status == 200) {
-        try {
-            json j = json::parse(res->body);
-            const auto &results = j["data"]["result"];
-            if (!results.empty()) {
-                return std::stod(results[0]["value"][1].get<std::string>());
+    auto querySingleValue = [&](const std::string &promql) -> double {
+        std::string path = "/api/v1/query?query=" + promql + time_param;
+        auto res = cli.Get(path.c_str());
+        if (res && res->status == 200) {
+            try {
+                json j = json::parse(res->body);
+                const auto &results = j["data"]["result"];
+                if (!results.empty()) {
+                    return std::stod(results[0]["value"][1].get<std::string>());
+                }
+            } catch (const std::exception &e) {
+                std::cerr << "[MetricsClient] Parse error: " << e.what() << "\n";
             }
-        } catch (const std::exception &e) {
-            std::cerr << "[MetricsClient] Historical RAM parse error: " << e.what() << "\n";
         }
-    }
+        return 0.0;
+    };
 
-    auto states = getCurrentStates();
-    auto it = states.find(cu_uuid);
-    return (it != states.end()) ? it->second.ram_used_bytes : 0.0;
+    std::string inter_max_q = "max_over_time(intermediate_table_size_bytes{scope=\"application\",host_unit_uuid=\"" + uuid_str + "\"}[" + window_str + "])";
+    std::string cat_max_q   = "max_over_time(catalog_total_size_bytes{scope=\"application\",host_unit_uuid=\"" + uuid_str + "\"}[" + window_str + "])";
+    std::string cat_min_q   = "min_over_time(catalog_total_size_bytes{scope=\"application\",host_unit_uuid=\"" + uuid_str + "\"}[" + window_str + "])";
+
+    double intermediate_peak = querySingleValue(inter_max_q);
+    double catalog_max = querySingleValue(cat_max_q);
+    double catalog_min = querySingleValue(cat_min_q);
+
+    double catalog_delta = (catalog_max > catalog_min && catalog_min > 0.0) ? (catalog_max - catalog_min) : 0.0;
+
+    return std::max(intermediate_peak, catalog_delta);
 }
 
 }

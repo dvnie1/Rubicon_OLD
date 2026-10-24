@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
         auto res = promClient.Post(PROMETHEUS_WRITE_PATH, compressed_output, "application/x-protobuf");
 
         if (res && res->status >= 200 && res->status < 300) {
-            std::cout << "Pushed " << my_batch.metrics_size() << " metrics to Prometheus." << std::endl;
+            //std::cout << "Pushed " << my_batch.metrics_size() << " metrics to Prometheus." << std::endl;
         } else {
             std::cerr << "Prometheus Write Error: " << (res ? res->status : -1) << std::endl;
             if (res) std::cerr << res->body << std::endl;

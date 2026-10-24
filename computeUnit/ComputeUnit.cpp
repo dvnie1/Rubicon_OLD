@@ -378,7 +378,10 @@ int main(int argc, char** argv) {
 
             dispatcher.dispatch(meta->src_uuid, witem);
 
-            groupToTableMapping[group.groupid()].emplace(transfer.destination().tabname());
+            {
+                std::lock_guard<std::mutex> lock(groupToPlanMutex);
+                groupToTableMapping[group.groupid()].emplace(transfer.destination().tabname());
+            }
         }
 
         for (QueryPlan plan : group.plans()) {
@@ -407,16 +410,32 @@ int main(int argc, char** argv) {
 
     client.start();
 
-    std::optional<MonitorClient> monitor_client;
-
-    if (!(monitor_ip=="" || monitor_port==0)) {
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-        monitor_client.emplace(monitor_ip, monitor_port, client.getUuid(), UnitType::COMPUTE_UNIT, monitor_interval, monitor_acc);
-        std::cout << "Monitor connected at: " << monitor_ip << ":" << monitor_port << std::endl;
-    }
-
     // necessary for initializing if not already done
     DataCatalog::getInstance();
+
+    std::optional<MonitorClient> monitor_client;
+    if (!(monitor_ip=="" || monitor_port==0)) {
+        AppMetricCallbacks callbacks;
+        callbacks.get_intermediate_table_size = []() -> size_t {
+            return DataCatalog::getInstance().getTableSize("intermediate");
+        };
+        callbacks.get_column_count = []() -> size_t {
+            return DataCatalog::getInstance().getColumnCount();
+        };
+        callbacks.get_total_catalog_size = []() -> size_t {
+            return DataCatalog::getInstance().getTotalCatalogSize();
+        };
+
+        monitor_client.emplace(
+            monitor_ip,
+            monitor_port,
+            client.getUuid(),
+            UnitType::COMPUTE_UNIT,
+            monitor_interval,
+            monitor_acc,
+            callbacks
+        );
+    }
 
     client.waitUntilChannelClosed();
 

@@ -48,9 +48,9 @@ class DataCatalog {
     int removeColumn(const std::string& tableName, const std::string& columnName);
     int dropTable(const std::string& tableName);
 
-    size_t getColumnCount();
-    size_t getTotalCatalogSize();
-    size_t getTableSize(const std::string& tableName);
+    size_t getColumnCount() const;
+    size_t getTotalCatalogSize() const;
+    size_t getTableSize(const std::string& tableName) const;
 
    private:
     mutable std::shared_mutex catalogMutex;

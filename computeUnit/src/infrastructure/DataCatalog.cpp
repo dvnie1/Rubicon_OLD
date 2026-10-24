@@ -83,7 +83,7 @@ void DataCatalog::clearCatalog(bool verbose) {
     tables.clear();
 }
 
-size_t DataCatalog::getColumnCount() {
+size_t DataCatalog::getColumnCount() const {
     std::shared_lock<std::shared_mutex> lk(catalogMutex);
     size_t count = 0;
     for (auto& table : tables) {
@@ -92,16 +92,16 @@ size_t DataCatalog::getColumnCount() {
     return count;
 }
 
-size_t DataCatalog::getTotalCatalogSize() {
+size_t DataCatalog::getTotalCatalogSize() const {
     std::shared_lock<std::shared_mutex> lk(catalogMutex);
     size_t totalSize = 0;
     for (auto& table : tables) {
         for (auto& col : table.second) {
-            if (col.second->isRemote) {
+            if (!col.second || col.second->isRemote) {
                 continue;
             }
             totalSize += col.second->sizeInBytes;
-            if (col.second->datatype == DataType::string_enc) {
+            if (col.second->datatype == DataType::string_enc && col.second->dictionaryEncoding != nullptr) {
                 totalSize += col.second->dictionaryEncoding->getDictionarySize();
             }
         }
@@ -109,16 +109,16 @@ size_t DataCatalog::getTotalCatalogSize() {
     return totalSize;
 }
 
-size_t DataCatalog::getTableSize(const std::string& tableName) {
+size_t DataCatalog::getTableSize(const std::string& tableName) const {
     std::shared_lock<std::shared_mutex> lk(catalogMutex);
     if (tables.contains(tableName)) {
         size_t totalSize = 0;
-        for (auto& col : tables[tableName]) {
-            if (col.second->isRemote) {
+        for (auto& col : tables.at(tableName)) {
+            if (!col.second || col.second->isRemote) {
                 continue;
             }
             totalSize += col.second->sizeInBytes;
-            if (col.second->datatype == DataType::string_enc) {
+            if (col.second->datatype == DataType::string_enc && col.second->dictionaryEncoding != nullptr) {
                 totalSize += col.second->dictionaryEncoding->getDictionarySize();
             }
         }
