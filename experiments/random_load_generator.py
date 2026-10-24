@@ -111,7 +111,7 @@ def run_random_load(
         max_overhead: Optional[float] = None,
 ) -> list[QueryResult]:
     src_uuid, tgt_uuid = _discover_compute_unit(client)
-    _configure_workers(client, src_uuid, workers)
+    #_configure_workers(client, src_uuid, workers)
 
     send_server_configuration(
         client=client,
@@ -227,7 +227,7 @@ def main():
     parser.add_argument("-sf", "--scale-factor", type=int, default=10)
     parser.add_argument("-g", "--groups", type=int, default=20)
     parser.add_argument("-m", "--max-group-size", type=int, default=10)
-    parser.add_argument("-w", "--workers", type=int, default=1)
+    parser.add_argument("-w", "--workers", type=int, default=0)
     parser.add_argument("-q", "--queries", nargs="+", default=ALL_SSB_QUERIES)
     parser.add_argument("--window-size", type=float, required=True)
     parser.add_argument("--threshold", type=int, default=10)
