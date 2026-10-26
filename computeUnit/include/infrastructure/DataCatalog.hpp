@@ -50,10 +50,15 @@ class DataCatalog {
 
     size_t getColumnCount() const;
     size_t getTotalCatalogSize() const;
+    size_t consumePeakCatalogSize() const;
     size_t getTableSize(const std::string& tableName) const;
 
    private:
+    size_t computeTotalCatalogSizeUnlocked() const;
+    void updatePeakUnlocked(size_t current_size) const;
+
     mutable std::shared_mutex catalogMutex;
+    mutable std::atomic<size_t> peakCatalogBytes{0};
 
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<Column>>> tables;
 };

@@ -38,6 +38,7 @@ struct PendingGroup {
     std::vector<float> query_features;
     std::vector<float> bandit_context;
     ExecutionMetrics prediction;
+    ExecutionMetrics isolated_prediction;
     double baseline_ram_bytes;
     std::chrono::steady_clock::time_point start_steady;
     int64_t start_sys_ms;

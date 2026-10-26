@@ -89,18 +89,16 @@ namespace lb {
     }
 
     double MetricsClient::getPeakRamInWindow(uint64_t cu_uuid, int64_t start_ts_ms, int64_t end_ts_ms) const {
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-
         httplib::Client cli(vm_url_);
 
-        int64_t padded_end_ms = end_ts_ms + 250;
+        int64_t padded_end_ms = end_ts_ms + 500;
         int64_t duration_ms = std::max<int64_t>(padded_end_ms - start_ts_ms, 1000);
         double end_sec = static_cast<double>(padded_end_ms) / 1000.0;
 
         std::string query_path =
-                "/api/v1/query?query=max_over_time(intermediate_table_size_bytes{scope=\"application\",host_unit_uuid=\""
-                + std::to_string(cu_uuid) + "\"}[" + std::to_string(duration_ms) + "ms])"
-                + "&time=" + std::to_string(end_sec);
+            "/api/v1/query?query=max_over_time(intermediate_table_size_bytes{scope=\"application\",host_unit_uuid=\""
+            + std::to_string(cu_uuid) + "\"}[" + std::to_string(duration_ms) + "ms])"
+            + "&time=" + std::to_string(end_sec);
 
         auto res = cli.Get(query_path.c_str());
         if (res && res->status == 200) {

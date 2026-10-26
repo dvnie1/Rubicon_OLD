@@ -32,7 +32,9 @@ AdaptiveLoadBalancer::AdaptiveLoadBalancer(LoadBalancerConfig config)
         bool exists = std::filesystem::exists(config_.log_csv_path);
         log_file_.open(config_.log_csv_path, std::ios::app);
         if (log_file_.is_open() && !exists) {
-            log_file_ << "timestamp_ms,group_id,selected_cu,is_warmup,concurrent_on_cu,pred_latency_ms,actual_latency_ms,pred_ram_bytes,actual_ram_bytes";
+            log_file_ << "timestamp_ms,group_id,selected_cu,is_warmup,concurrent_on_cu,"
+                      << "pred_latency_ms,actual_latency_ms,pred_ram_bytes,actual_ram_bytes,"
+                      << "pred_iso_latency_ms,pred_iso_ram_bytes";
             for (size_t i = 0; i < XGB_FEATURES; ++i) {
                 log_file_ << ",f_" << i;
             }
@@ -67,6 +69,7 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
 
     uint64_t selected_cu = 0;
     ExecutionMetrics selected_prediction{0.0, 0.0};
+    ExecutionMetrics isolated_prediction{0.0, 0.0};
     std::vector<float> selected_context(BANDIT_FEATURES, 0.0f);
     std::vector<float> selected_query_features;
 
@@ -134,7 +137,11 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
         }
 
         selected_cu = sampler_->selectTarget(candidate_cus, cu_bandit_contexts);
-        selected_prediction = cu_preds[selected_cu];
+        isolated_prediction = cu_preds[selected_cu];
+
+        selected_prediction.latency_ms = current_reserved_lat[selected_cu] + isolated_prediction.latency_ms;
+        selected_prediction.ram_peak_bytes = current_reserved_ram[selected_cu] + isolated_prediction.ram_peak_bytes;
+
         selected_query_features = std::move(cu_q_feats[selected_cu]);
         selected_context = std::move(cu_bandit_contexts[selected_cu]);
     }
@@ -144,8 +151,8 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
     {
         std::unique_lock lock(tracking_mutex_);
         size_t active_on_cu = ++cu_in_flight_[selected_cu];
-        cu_reserved_ram_[selected_cu] += selected_prediction.ram_peak_bytes;
-        cu_reserved_lat_[selected_cu] += selected_prediction.latency_ms;
+        cu_reserved_ram_[selected_cu] += isolated_prediction.ram_peak_bytes;
+        cu_reserved_lat_[selected_cu] += isolated_prediction.latency_ms;
 
         for (auto& [gid, pg] : pending_groups_) {
             if (pg.selected_cu == selected_cu) {
@@ -159,6 +166,7 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
             std::move(selected_query_features),
             std::move(selected_context),
             selected_prediction,
+            isolated_prediction,
             baseline_ram,
             std::chrono::steady_clock::now(),
             currentEpochMs(),
@@ -175,7 +183,7 @@ uint64_t AdaptiveLoadBalancer::assignGroup(uint64_t group_id,
     return selected_cu;
 }
 
-void AdaptiveLoadBalancer::onPlanCompleted(uint32_t plan_id, bool success) {
+    void AdaptiveLoadBalancer::onPlanCompleted(uint32_t plan_id, bool success) {
     PendingGroup finished_group;
     bool group_done = false;
     double actual_latency_ms = 0.0;
@@ -203,8 +211,8 @@ void AdaptiveLoadBalancer::onPlanCompleted(uint32_t plan_id, bool success) {
             if (cu_in_flight_[cu] > 0) {
                 cu_in_flight_[cu]--;
             }
-            cu_reserved_ram_[cu] = std::max(0.0, cu_reserved_ram_[cu] - grp_it->second.prediction.ram_peak_bytes);
-            cu_reserved_lat_[cu] = std::max(0.0, cu_reserved_lat_[cu] - grp_it->second.prediction.latency_ms);
+            cu_reserved_ram_[cu] = std::max(0.0, cu_reserved_ram_[cu] - grp_it->second.isolated_prediction.ram_peak_bytes);
+            cu_reserved_lat_[cu] = std::max(0.0, cu_reserved_lat_[cu] - grp_it->second.isolated_prediction.latency_ms);
 
             finished_group = std::move(grp_it->second);
             pending_groups_.erase(grp_it);
@@ -217,7 +225,7 @@ void AdaptiveLoadBalancer::onPlanCompleted(uint32_t plan_id, bool success) {
     }
 }
 
-void AdaptiveLoadBalancer::finalizeGroup(const PendingGroup& group_info, double actual_latency_ms, int64_t end_sys_ms) {
+    void AdaptiveLoadBalancer::finalizeGroup(const PendingGroup& group_info, double actual_latency_ms, int64_t end_sys_ms) {
     if (!group_info.all_succeeded) {
         if (!group_info.was_warmup) {
             sampler_->updateDistribution(group_info.bandit_context, 0.0);
@@ -231,15 +239,7 @@ void AdaptiveLoadBalancer::finalizeGroup(const PendingGroup& group_info, double 
         end_sys_ms
     );
 
-    double concurrency = static_cast<double>(std::max<size_t>(group_info.max_concurrent_on_cu, 1));
-    double ram_delta = (group_info.baseline_ram_bytes > 0.0)
-                       ? std::max(0.0, raw_peak_ram - group_info.baseline_ram_bytes)
-                       : raw_peak_ram;
-
-    double attributed_latency_ms = actual_latency_ms / concurrency;
-    double attributed_ram_bytes = ram_delta / concurrency;
-
-    ExecutionMetrics actuals{attributed_latency_ms, attributed_ram_bytes};
+    ExecutionMetrics actuals{actual_latency_ms, raw_peak_ram};
     logGroupExecution(group_info, actuals);
 
     if (!group_info.was_warmup) {
@@ -263,8 +263,8 @@ void AdaptiveLoadBalancer::finalizeGroup(const PendingGroup& group_info, double 
     {
         std::lock_guard lock(dataset_mutex_);
         history_features_.insert(history_features_.end(), group_info.query_features.begin(), group_info.query_features.end());
-        history_latencies_.push_back(static_cast<float>(attributed_latency_ms));
-        history_rams_.push_back(static_cast<float>(attributed_ram_bytes));
+        history_latencies_.push_back(static_cast<float>(actual_latency_ms));
+        history_rams_.push_back(static_cast<float>(raw_peak_ram));
         completed_groups_++;
 
         if (!is_ready_.load(std::memory_order_relaxed)) {
@@ -332,7 +332,7 @@ void AdaptiveLoadBalancer::onWorkerCount(uint64_t uuid, size_t workers) {
     cu_workers_[uuid] = workers;
 }
 
-void AdaptiveLoadBalancer::logGroupExecution(const PendingGroup& group_info, const ExecutionMetrics& actuals) {
+    void AdaptiveLoadBalancer::logGroupExecution(const PendingGroup& group_info, const ExecutionMetrics& actuals) {
     if (!log_file_.is_open()) return;
 
     std::lock_guard lock(log_mutex_);
@@ -344,7 +344,9 @@ void AdaptiveLoadBalancer::logGroupExecution(const PendingGroup& group_info, con
               << group_info.prediction.latency_ms << ","
               << actuals.latency_ms << ","
               << group_info.prediction.ram_peak_bytes << ","
-              << actuals.ram_peak_bytes;
+              << actuals.ram_peak_bytes << ","
+              << group_info.isolated_prediction.latency_ms << ","
+              << group_info.isolated_prediction.ram_peak_bytes;
 
     for (float f : group_info.query_features) {
         log_file_ << "," << f;

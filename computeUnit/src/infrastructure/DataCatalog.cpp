@@ -19,6 +19,22 @@ std::shared_ptr<Column> DataCatalog::getColumnByName(const std::string& tableNam
     return nullptr;
 }
 
+size_t DataCatalog::computeTotalCatalogSizeUnlocked() const {
+    size_t totalSize = 0;
+    for (const auto& table : tables) {
+        for (const auto& col : table.second) {
+            if (!col.second || col.second->isRemote) {
+                continue;
+            }
+            totalSize += col.second->sizeInBytes;
+            if (col.second->datatype == DataType::string_enc && col.second->dictionaryEncoding != nullptr) {
+                totalSize += col.second->dictionaryEncoding->getDictionarySize();
+            }
+        }
+    }
+    return totalSize;
+}
+
 std::shared_ptr<Column> DataCatalog::addColumn(const std::string& tableName, const std::string& columnName, std::shared_ptr<Column> col) {
     std::unique_lock<std::shared_mutex> lk(catalogMutex);
     if (!tables.contains(tableName)) {
@@ -48,14 +64,14 @@ std::shared_ptr<Column> DataCatalog::addColumn(const std::string& tableName, con
  */
 int DataCatalog::removeColumn(const std::string& tableName, const std::string& columnName) {
     std::lock_guard<std::shared_mutex> lk(catalogMutex);
-    if (tables.contains(tableName)) {
-        if (tables[tableName].contains(columnName)) {
-            int ret = tables[tableName].erase(columnName);
-            if (tables[tableName].empty()) {
-                tables.erase(tableName);
-            }
-            return ret;
+    if (tables.contains(tableName) && tables[tableName].contains(columnName)) {
+        size_t cur = computeTotalCatalogSizeUnlocked();
+        peakCatalogBytes.store(std::max(peakCatalogBytes.load(std::memory_order_relaxed), cur), std::memory_order_relaxed);
+        int ret = tables[tableName].erase(columnName);
+        if (tables[tableName].empty()) {
+            tables.erase(tableName);
         }
+        return ret;
     }
 
     LOG_ERROR("[DataCatalog] Error - cannot remove column with name \"" << columnName << "\" from table \"" << tableName << "\". Column-Identifier does not exist for this table." << std::endl;)
@@ -65,6 +81,8 @@ int DataCatalog::removeColumn(const std::string& tableName, const std::string& c
 int DataCatalog::dropTable(const std::string& tableName) {
     std::lock_guard<std::shared_mutex> lk(catalogMutex);
     if (tables.contains(tableName)) {
+        size_t cur = computeTotalCatalogSizeUnlocked();
+        peakCatalogBytes.store(std::max(peakCatalogBytes.load(std::memory_order_relaxed), cur), std::memory_order_relaxed);
         int ret = tables[tableName].size();
         tables.erase(tableName);
         return ret;
@@ -94,19 +112,14 @@ size_t DataCatalog::getColumnCount() const {
 
 size_t DataCatalog::getTotalCatalogSize() const {
     std::shared_lock<std::shared_mutex> lk(catalogMutex);
-    size_t totalSize = 0;
-    for (auto& table : tables) {
-        for (auto& col : table.second) {
-            if (!col.second || col.second->isRemote) {
-                continue;
-            }
-            totalSize += col.second->sizeInBytes;
-            if (col.second->datatype == DataType::string_enc && col.second->dictionaryEncoding != nullptr) {
-                totalSize += col.second->dictionaryEncoding->getDictionarySize();
-            }
-        }
-    }
-    return totalSize;
+    return computeTotalCatalogSizeUnlocked();
+}
+
+size_t DataCatalog::consumePeakCatalogSize() const {
+    std::shared_lock<std::shared_mutex> lk(catalogMutex);
+    size_t current = computeTotalCatalogSizeUnlocked();
+    size_t prev_peak = peakCatalogBytes.exchange(current, std::memory_order_relaxed);
+    return std::max(current, prev_peak);
 }
 
 size_t DataCatalog::getTableSize(const std::string& tableName) const {

@@ -127,8 +127,8 @@ int main(int argc, char** argv) {
 
     // Configure orchestrator
     orchestrator::PlanOrchestrator::Config config;
-    config.gcInterval = std::chrono::milliseconds(50); // rapid cleanup for accurate memory usage statistics
-    config.maxPendingCleanup = 1; // rapid cleanup for accurate memory usage statistics
+    config.gcInterval = std::chrono::milliseconds(1000);
+    config.maxPendingCleanup = 10;
 
     // Create orchestrator
     orchestrator::PlanOrchestrator orch(config);
@@ -420,8 +420,8 @@ int main(int argc, char** argv) {
         std::cout << "[COMPUTE_UNIT]: AppMetricCallbacks enabled!" << std::endl;
         AppMetricCallbacks callbacks;
         callbacks.get_intermediate_table_size = [baseCatalogSize]() -> size_t {
-            size_t current = DataCatalog::getInstance().getTotalCatalogSize();
-            return (current > baseCatalogSize) ? (current - baseCatalogSize) : 0;
+            size_t peak = DataCatalog::getInstance().consumePeakCatalogSize();
+            return (peak > baseCatalogSize) ? (peak - baseCatalogSize) : 0;
         };
         callbacks.get_column_count = []() -> size_t {
             return DataCatalog::getInstance().getColumnCount();
