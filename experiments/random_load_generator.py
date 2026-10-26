@@ -180,7 +180,7 @@ def run_random_load(
         complete_plans.clear()
 
         print(f"Warmup {w + 1}/{warmup} completed.")
-        time.sleep(0.2)
+        time.sleep(0.5)
 
     print("\n\n\nWarmup completed\n\n\n")
 

@@ -127,8 +127,8 @@ int main(int argc, char** argv) {
 
     // Configure orchestrator
     orchestrator::PlanOrchestrator::Config config;
-    config.gcInterval = std::chrono::milliseconds(1000);
-    config.maxPendingCleanup = 10;
+    config.gcInterval = std::chrono::milliseconds(50); // rapid cleanup for accurate memory usage statistics
+    config.maxPendingCleanup = 1; // rapid cleanup for accurate memory usage statistics
 
     // Create orchestrator
     orchestrator::PlanOrchestrator orch(config);
@@ -413,11 +413,15 @@ int main(int argc, char** argv) {
     // necessary for initializing if not already done
     DataCatalog::getInstance();
 
+    const size_t baseCatalogSize = DataCatalog::getInstance().getTotalCatalogSize();
+
     std::optional<MonitorClient> monitor_client;
     if (!(monitor_ip=="" || monitor_port==0)) {
+        std::cout << "[COMPUTE_UNIT]: AppMetricCallbacks enabled!" << std::endl;
         AppMetricCallbacks callbacks;
-        callbacks.get_intermediate_table_size = []() -> size_t {
-            return DataCatalog::getInstance().getTableSize("intermediate");
+        callbacks.get_intermediate_table_size = [baseCatalogSize]() -> size_t {
+            size_t current = DataCatalog::getInstance().getTotalCatalogSize();
+            return (current > baseCatalogSize) ? (current - baseCatalogSize) : 0;
         };
         callbacks.get_column_count = []() -> size_t {
             return DataCatalog::getInstance().getColumnCount();
@@ -436,6 +440,12 @@ int main(int argc, char** argv) {
             callbacks
         );
     }
+    /*if (!(monitor_ip=="" || monitor_port==0)) {
+        std::cout << "[COMPUTE_UNIT]: No AppMetricCallbacks" << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        monitor_client.emplace(monitor_ip, monitor_port, client.getUuid(), UnitType::COMPUTE_UNIT, monitor_interval, monitor_acc);
+        std::cout << "Monitor connected at: " << monitor_ip << ":" << monitor_port << std::endl;
+    }*/
 
     client.waitUntilChannelClosed();
 

@@ -495,34 +495,30 @@ void NativeCollector::collect_infiniband_metrics(metrics::DynamicMetricBatch &ba
 
 void NativeCollector::collect_app_metrics(metrics::DynamicMetricBatch &batch, int64_t now_ms) {
     size_t size = app_callbacks.get_intermediate_table_size();
-    if (size > 0) {
-        auto *m = batch.add_metrics();
-        m->set_name("intermediate_table_size_bytes");
-        (*m->mutable_labels())["scope"] = "application";
-        (*m->mutable_labels())["host_machine_uuid"] = host_machine_uuid_string;
-        m->set_value(static_cast<double>(size));
-        m->set_timestamp_ms(now_ms);
-    }
+    auto *m = batch.add_metrics();
+    m->set_name("intermediate_table_size_bytes");
+    (*m->mutable_labels())["scope"] = "application";
+    (*m->mutable_labels())["host_machine_uuid"] = host_machine_uuid_string;
+    m->set_value(static_cast<double>(size));
+    m->set_timestamp_ms(now_ms);
+
 
     size_t cols = app_callbacks.get_column_count();
-    if (cols > 0) {
-        auto *m = batch.add_metrics();
-        m->set_name("catalog_column_count");
-        (*m->mutable_labels())["scope"] = "application";
-        (*m->mutable_labels())["host_machine_uuid"] = host_machine_uuid_string;
-        m->set_value(static_cast<double>(cols));
-        m->set_timestamp_ms(now_ms);
-    }
+    auto *x = batch.add_metrics();
+    x->set_name("catalog_column_count");
+    (*x->mutable_labels())["scope"] = "application";
+    (*x->mutable_labels())["host_machine_uuid"] = host_machine_uuid_string;
+    x->set_value(static_cast<double>(cols));
+    x->set_timestamp_ms(now_ms);
+
 
     size_t cat_size = app_callbacks.get_total_catalog_size();
-    if (cat_size > 0) {
-        auto *m = batch.add_metrics();
-        m->set_name("catalog_total_size_bytes");
-        (*m->mutable_labels())["scope"] = "application";
-        (*m->mutable_labels())["host_machine_uuid"] = host_machine_uuid_string;
-        m->set_value(static_cast<double>(cat_size));
-        m->set_timestamp_ms(now_ms);
-    }
+    auto *z = batch.add_metrics();
+    z->set_name("catalog_total_size_bytes");
+    (*z->mutable_labels())["scope"] = "application";
+    (*z->mutable_labels())["host_machine_uuid"] = host_machine_uuid_string;
+    z->set_value(static_cast<double>(cat_size));
+    z->set_timestamp_ms(now_ms);
 }
 
 void NativeCollector::collect_process_io(metrics::DynamicMetricBatch &batch, int64_t now_ms) {
